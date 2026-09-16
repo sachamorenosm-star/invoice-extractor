@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Invoice & Receipt Data Extractor</title>
+  <link rel="icon" href="/assets/logo.svg" type="image/svg+xml" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <header class="border-b border-slate-200 bg-white">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-2">
+      <img src="/assets/logo.svg" alt="Logo" class="w-8 h-8" />
+      <a href="/" class="font-bold text-slate-900">InvoiceExtract</a>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 sm:px-6 py-12 prose prose-slate">
+    <h1 class="text-3xl font-extrabold text-slate-900">Privacy Policy</h1>
+    <p class="text-sm text-slate-500">Ultimo aggiornamento: 16 settembre 2026</p>
+
+    <p>
+      La presente Privacy Policy descrive come "Invoice & Receipt Data Extractor"
+      ("il Servizio", "noi") tratta i dati personali e i documenti caricati dagli
+      utenti ("tu", "l'Utente"), in conformità al Regolamento (UE) 2016/679
+      (GDPR).
+    </p>
+
+    <h2 class="text-xl font-bold text-slate-900 mt-8">1. Titolare del trattamento</h2>
+    <p>
+      Il titolare del trattamento dei dati è il gestore del Servizio, contattabile
+      tramite l'indirizzo email indicato nella sezione "Contatti" del sito.
+    </p>
+
+    <h2 class="text-xl font-bold text-slate-900 mt-8">2. Dati trattati e finalità</h2>
+    <ul>
+      <li>
+        <strong>Documenti caricati (fatture/ricevute in PDF o immagine):</strong>
+        elaborati esclusivamente al fine di estrarre i dati contabili richiesti
+        dall'Utente (fornitore, importi, date, IVA, ecc.).
+      </li>
+      <li>
+        <strong>Identificativo anonimo di sessione:</strong> un ID casuale
+        generato lato browser (non collegato a dati anagrafici) usato solo per
+        applicare i limiti di utilizzo del piano Free/Pro.
+      </li>
+      <li>
+        <strong>Dati di pagamento:</strong> gestiti interamente da Stripe, Inc.
+        Il Servizio non riceve né conserva mai i dati della carta di credito.
+      </li>
+    </ul>
+
+    <h2 class="text-xl font-bold text-slate-900 mt-8">3. Politica "Zero-Retention" (Non Conservazione)</h2>
+    <p>
+      <strong>Il Servizio non salva mai, in modo permanente, i file caricati
+      dagli utenti su alcun disco o database.</strong> Ogni file:
+    </p>
+    <ul>
+      <li>è caricato e mantenuto esclusivamente in memoria volatile (RAM) del
+        server durante l'elaborazione della richiesta;</li>
+      <li>viene trasmesso in modo cifrato (HTTPS/TLS) al provider di
+        intelligenza artificiale (Anthropic) per l'estrazione dei dati;</li>
+      <li>viene eliminato automaticamente dalla memoria del server subito dopo
+        la generazione della risposta, senza alcuna copia residua, backup o
+        log del contenuto.</li>
+    </ul>
+    <p>
+      I dati estratti (testo strutturato: importi, date, nomi fornitore) sono
+      restituiti al browser dell'Utente e possono essere modificati/esportati
+      localmente: il Servizio non li archivia lato server dopo la risposta.
+    </p>
+
+    <h2 class="text-xl font-bold text-slate-900 mt-8">4. Utilizzo dell'API Anthropic (Claude) e non-uso per l'addestramento</h2>
+    <p>
+      Per l'estrazione automatica dei dati, il Servizio utilizza l'API di
+      Anthropic (modelli Claude). In base alle condizioni commerciali di
+      Anthropic per l'utilizzo tramite API,
+      <strong>i dati e i documenti inviati tramite API non vengono utilizzati
+      da Anthropic per addestrare i propri modelli di intelligenza
+      artificiale</strong>, salvo esplicito consenso separato che questo
+      Servizio non fornisce. Anthropic può conservare i dati delle richieste
+      API per un periodo limitato esclusivamente per finalità di sicurezza,
+      abuso e conformità legale, secondo la propria informativa privacy
+      pubblicata su anthropic.com.
+    </p>
+
+    <h2 class="text-xl font-bold text-slate-900 mt-8">5. Base giuridica del trattamento</h2>
+    <p>
+      Il trattamento dei documenti caricati si basa sull'esecuzione del
+      contratto/servizio richiesto dall'Utente (Art. 6.1.b GDPR). Il
+      trattamento dei dati di pagamento si basa sull'esecuzione del contratto
+      e su obblighi legali/fiscali (Art. 6.1.b e 6.1.c GDPR).
+    </p>
+
+    <h2 class="text-xl font-bold text-slate-900 mt-8">6. Destinatari dei dati</h2>
+    <p>I dati possono essere condivisi esclusivamente con:</p>
+    <ul>
+      <li>Anthropic (fornitore del modello IA), come sub-responsabile del
+        trattamento, per la sola durata dell'elaborazione della richiesta;</li>
+      <li>Stripe, Inc. per la gestione dei pagamenti e degli abbonamenti;</li>
+      <li>il provider di hosting infrastrutturale del Servizio.</li>
+    </ul>
+    <p>Nessun dato viene mai venduto o ceduto a terzi per finalità di marketing.</p>
+
+    <h2 class="text-xl font-bold text-slate-900 mt-8">7. Diritti dell'interessato</h2>
+    <p>
+      In qualità di interessato, hai il diritto di accedere, rettificare,
+      cancellare i tuoi dati, limitarne il trattamento, opporti al trattamento
+      e richiederne la portabilità, oltre al diritto di proporre reclamo
+      all'Autorità Garante per la Protezione dei Dati Personali. Poiché il
+      Servizio non conserva i documenti caricati oltre la singola richiesta,
+      la maggior parte di questi diritti si applica principalmente ai dati
+      dell'account/abbonamento.
+    </p>
+
+    <h2 class="text-xl font-bold text-slate-900 mt-8">8. Conservazione dei dati</h2>
+    <p>
+      I documenti caricati: 0 giorni di conservazione (eliminati subito dopo
+      l'elaborazione). I dati di abbonamento: conservati per la durata del
+      rapporto contrattuale e per il periodo richiesto dagli obblighi fiscali
+      applicabili.
+    </p>
+
+    <h2 class="text-xl font-bold text-slate-900 mt-8">9. Sicurezza</h2>
+    <p>
+      Il Servizio adotta misure tecniche adeguate: trasmissione dati cifrata
+      (HTTPS), elaborazione file esclusivamente in memoria volatile,
+      limitazione della frequenza delle richieste (rate limiting) e header di
+      sicurezza HTTP standard.
+    </p>
+
+    <h2 class="text-xl font-bold text-slate-900 mt-8">10. Contatti</h2>
+    <p>
+      Per esercitare i tuoi diritti o per qualsiasi domanda relativa a questa
+      Privacy Policy, contatta il titolare del trattamento all'indirizzo
+      email indicato nel footer del sito o nella pagina dei Termini di
+      Servizio.
+    </p>
+  </main>
+
+  <footer class="border-t border-slate-200 py-8 text-center text-sm text-slate-400">
+    <a href="/" class="hover:text-slate-600">← Torna alla home</a>
+  </footer>
+</body>
+</html>

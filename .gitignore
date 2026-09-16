@@ -1,0 +1,12 @@
+node_modules/
+data/
+.env
+.env.local
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+dist/
+coverage/
+.vscode/
+*.tmp
