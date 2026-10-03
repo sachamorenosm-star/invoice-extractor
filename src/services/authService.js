@@ -38,7 +38,8 @@ if (!process.env.SESSION_SECRET ||
   } else {
     // Development: genera automaticamente
     JWT_SECRET = crypto.randomBytes(32).toString('hex');
-    console.warn('[authService] SESSION_SECRET non configurato in development. Generato temporaneamente:', JWT_SECRET.substring(0, 16) + '...');
+    // Mai loggare nemmeno una parte del secret di firma.
+    console.warn('[authService] SESSION_SECRET non configurato in development: generato un secret temporaneo (le sessioni si azzerano al riavvio).');
   }
 } else if (process.env.SESSION_SECRET.length < 32) {
   if (NODE_ENV === 'production') {
@@ -71,6 +72,25 @@ function isValidEmail(email) {
 
 function normalizeEmail(email) {
   return email.trim().toLowerCase();
+}
+
+// Il token del Magic Link è una credenziale bearer temporanea: non deve mai
+// finire nei log (né in produzione né in sviluppo). Per i log usiamo solo
+// metadati non segreti: email mascherata e un URL con il token oscurato.
+const SAFE_VERIFY_HINT = '/api/auth/verify?token=[REDACTED]';
+
+function maskEmail(email) {
+  const [local, domain] = normalizeEmail(email).split('@');
+  return `${(local || '').slice(0, 1)}***@${domain || '?'}`;
+}
+
+// Difesa in profondità per i messaggi d'errore di terze parti (es. Resend)
+// che potrebbero riecheggiare il corpo dell'email: oscura "token=<valore>"
+// e qualsiasi sequenza esadecimale lunga (formato dei nostri token).
+function redactSecrets(text) {
+  return String(text)
+    .replace(/token=[^\s&"'<>]+/gi, 'token=[REDACTED]')
+    .replace(/\b[0-9a-f]{32,}\b/gi, '[REDACTED]');
 }
 
 function currentPeriodKey() {
@@ -106,7 +126,7 @@ async function sendMagicLink(email, anonUserId) {
   const verifyUrl = `${FRONTEND_URL}/api/auth/verify?token=${token}`;
 
   if (!resend) {
-    console.warn(`[authService] Email non inviata (Resend non configurato). Link di debug: ${verifyUrl}`);
+    console.warn(`[authService] Magic-link generato per ${maskEmail(email)}: invio saltato (provider email non configurato). Link: ${SAFE_VERIFY_HINT}`);
     return { sent: false };
   }
 
@@ -131,8 +151,9 @@ async function sendMagicLink(email, anonUserId) {
     return { sent: true };
   } catch (err) {
     // Non logghiamo mai l'indirizzo email per intero nei log applicativi.
-    console.error('[authService] Errore invio email tramite Resend:', err.message);
-    return { sent: false, error: err.message };
+    const safeMessage = redactSecrets(err && err.message);
+    console.error('[authService] Errore invio email tramite Resend:', safeMessage);
+    return { sent: false, error: safeMessage };
   }
 }
 
