@@ -1,11 +1,22 @@
 const { canScan, getPlanStatus } = require('../services/stripeService');
+const authService = require('../services/authService');
 
 const USER_ID_PATTERN = /^usr_[a-zA-Z0-9-]{8,64}$/;
 
-// Identifica l'utente anonimo tramite l'header X-User-Id (generato lato
-// client e salvato in localStorage). Non è un vero sistema di autenticazione
-// con credenziali: serve solo a far rispettare i limiti di piano free/pro.
+// Identifica l'utente. Priorità:
+// 1. Sessione autenticata (cookie httpOnly firmato, impostata dopo il
+//    login via Magic Link) — se presente e valida, è quella autorevole.
+// 2. Header X-User-Id anonimo (generato lato client e salvato in
+//    localStorage), usato solo per far rispettare i limiti di piano
+//    prima che l'utente si sia mai loggato.
 function identifyUser(req, res, next) {
+  const session = authService.getSessionFromRequest(req);
+  if (session?.userId) {
+    req.userId = session.userId;
+    req.userEmail = session.email;
+    return next();
+  }
+
   const headerId = req.get('X-User-Id');
   if (headerId && USER_ID_PATTERN.test(headerId)) {
     req.userId = headerId;

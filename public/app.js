@@ -20,6 +20,8 @@
     resultsSection: document.getElementById('results-section'),
     resultsTbody: document.getElementById('results-tbody'),
     warningBanner: document.getElementById('warning-banner'),
+    incompleteBanner: document.getElementById('incomplete-banner'),
+    incompleteBannerText: document.getElementById('incomplete-banner-text'),
     downloadXlsx: document.getElementById('download-xlsx'),
     downloadCsv: document.getElementById('download-csv'),
     planBadge: document.getElementById('plan-badge'),
@@ -27,6 +29,57 @@
     maxSizeLabel: document.getElementById('max-size-label'),
     toast: document.getElementById('toast'),
     themeToggle: document.getElementById('theme-toggle'),
+
+    mobileMenuBtn: document.getElementById('mobile-menu-btn'),
+    mobileMenu: document.getElementById('mobile-menu'),
+    mobileMenuSettingsBtn: document.getElementById('mobile-menu-settings-btn'),
+    mobileMenuLogoutBtn: document.getElementById('mobile-menu-logout-btn'),
+
+    loginBtn: document.getElementById('login-btn'),
+    accountArea: document.getElementById('account-area'),
+    settingsBtn: document.getElementById('settings-btn'),
+    accountBtn: document.getElementById('account-btn'),
+    accountAvatarInitial: document.getElementById('account-avatar-initial'),
+    accountDropdown: document.getElementById('account-dropdown'),
+    accountDropdownEmail: document.getElementById('account-dropdown-email'),
+    dropdownSettingsBtn: document.getElementById('dropdown-settings-btn'),
+    dropdownLogoutBtn: document.getElementById('dropdown-logout-btn'),
+
+    loginModal: document.getElementById('login-modal'),
+    loginModalClose: document.getElementById('login-modal-close'),
+    loginForm: document.getElementById('login-form'),
+    loginEmailInput: document.getElementById('login-email-input'),
+    loginSubmitBtn: document.getElementById('login-submit-btn'),
+    loginModalMessage: document.getElementById('login-modal-message'),
+
+    preCheckoutModal: document.getElementById('pre-checkout-modal'),
+    preCheckoutModalClose: document.getElementById('pre-checkout-modal-close'),
+    preCheckoutLoginBtn: document.getElementById('pre-checkout-login-btn'),
+    preCheckoutContinueBtn: document.getElementById('pre-checkout-continue-btn'),
+
+    pricingLaunchBadge: document.getElementById('pricing-launch-badge'),
+
+    waitlistModal: document.getElementById('waitlist-modal'),
+    waitlistModalClose: document.getElementById('waitlist-modal-close'),
+    waitlistModalFormView: document.getElementById('waitlist-modal-form-view'),
+    waitlistModalThankyouView: document.getElementById('waitlist-modal-thankyou-view'),
+    waitlistModalPlanInfo: document.getElementById('waitlist-modal-plan-info'),
+    waitlistForm: document.getElementById('waitlist-form'),
+    waitlistEmailInput: document.getElementById('waitlist-email-input'),
+    waitlistSubmitBtn: document.getElementById('waitlist-submit-btn'),
+    waitlistModalError: document.getElementById('waitlist-modal-error'),
+
+    accountModal: document.getElementById('account-modal'),
+    accountModalClose: document.getElementById('account-modal-close'),
+    accountEmailReadonly: document.getElementById('account-email-readonly'),
+    recoveryEmailInput: document.getElementById('recovery-email-input'),
+    recoveryEmailSaveBtn: document.getElementById('recovery-email-save-btn'),
+    recoveryEmailMessage: document.getElementById('recovery-email-message'),
+    accountPlanName: document.getElementById('account-plan-name'),
+    accountPlanUsage: document.getElementById('account-plan-usage'),
+    accountPlanProgressBar: document.getElementById('account-plan-progress-bar'),
+    manageSubscriptionBtn: document.getElementById('manage-subscription-btn'),
+    accountLogoutBtn: document.getElementById('account-logout-btn'),
   };
 
   // ---------------------------------------------------------------
@@ -74,6 +127,44 @@
   prefersDarkQuery.addEventListener('change', (e) => {
     if (!getStoredTheme()) {
       applyTheme(e.matches);
+    }
+  });
+
+  // ---------------------------------------------------------------
+  // Menu mobile (hamburger) — sotto la soglia md la <nav> desktop è
+  // nascosta: questo pannello a comparsa la sostituisce, con gli stessi
+  // link più, se loggato, le voci di profilo.
+  // ---------------------------------------------------------------
+  function isMobileMenuOpen() {
+    return !els.mobileMenu.classList.contains('hidden');
+  }
+  function openMobileMenu() {
+    els.mobileMenu.classList.remove('hidden');
+    els.mobileMenuBtn.setAttribute('aria-expanded', 'true');
+  }
+  function closeMobileMenu() {
+    els.mobileMenu.classList.add('hidden');
+    els.mobileMenuBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  els.mobileMenuBtn?.addEventListener('click', () => {
+    if (isMobileMenuOpen()) closeMobileMenu();
+    else openMobileMenu();
+  });
+
+  // Chiude il menu quando si clicca un link al suo interno (comodo su
+  // mobile: altrimenti resterebbe aperto sopra la sezione a cui si è
+  // appena navigato).
+  els.mobileMenu?.querySelectorAll('a').forEach((link) => {
+    link.addEventListener('click', closeMobileMenu);
+  });
+
+  // Chiusura da tastiera con Escape, riportando il focus sul pulsante
+  // che l'ha aperto (comportamento atteso per un menu accessibile).
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isMobileMenuOpen()) {
+      closeMobileMenu();
+      els.mobileMenuBtn.focus();
     }
   });
 
@@ -127,7 +218,52 @@
     addFiles(e.dataTransfer.files);
   });
   els.dropZone.addEventListener('click', () => els.fileInput.click());
+  // Accessibilità da tastiera: la drop-zone ha role="button" e tabindex="0"
+  // (vedi index.html), quindi deve rispondere anche a Invio/Spazio come
+  // farebbe un <button> nativo — altrimenti chi naviga da tastiera non ha
+  // alcun modo di aprire il selettore file.
+  els.dropZone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      els.fileInput.click();
+    }
+  });
   els.fileInput.addEventListener('change', () => addFiles(els.fileInput.files));
+
+  // ---------------------------------------------------------------
+  // Incolla da appunti (Ctrl+V / Cmd+V)
+  //
+  // Ascolto globale sul documento: funziona con la pagina attiva senza
+  // dover prima cliccare sulla drop-zone. Se gli appunti non contengono
+  // un'immagine (es. l'utente ha incollato del testo altrove), non
+  // facciamo nulla: nessun errore per un paste non destinato all'upload.
+  // ---------------------------------------------------------------
+  document.addEventListener('paste', (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const pastedFiles = [];
+    const timestamp = Date.now();
+    for (const item of items) {
+      if (item.type && item.type.startsWith('image/')) {
+        const rawFile = item.getAsFile();
+        if (!rawFile) continue;
+        // Le immagini incollate di norma non hanno un nome reale: ne
+        // assegniamo uno leggibile, con l'estensione dedotta dal MIME type.
+        // L'indice evita nomi duplicati se vengono incollate più immagini
+        // nello stesso evento (stesso timestamp in millisecondi).
+        const ext = item.type.split('/')[1] || 'png';
+        const suffix = pastedFiles.length > 0 ? `-${pastedFiles.length + 1}` : '';
+        const namedFile = new File([rawFile], `immagine-incollata-${timestamp}${suffix}.${ext}`, { type: item.type });
+        pastedFiles.push(namedFile);
+      }
+    }
+
+    if (pastedFiles.length) {
+      e.preventDefault();
+      addFiles(pastedFiles);
+    }
+  });
 
   const ACCEPTED_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
   const MAX_FILE_SIZE_MB = 10; // aggiornato da /api/config se disponibile
@@ -172,9 +308,9 @@
             <svg class="w-4 h-4 text-brand-600 dark:text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
           </span>
           <span class="truncate text-sm font-medium text-ink-700 dark:text-ink-200">${escapeHtml(f.name)}</span>
-          <span class="text-xs text-ink-400 dark:text-ink-500 shrink-0">${(f.size / 1024).toFixed(0)} KB</span>
+          <span class="text-xs text-ink-500 dark:text-ink-400 shrink-0">${(f.size / 1024).toFixed(0)} KB</span>
         </div>
-        <button data-idx="${i}" class="remove-file text-ink-400 hover:text-danger-500 dark:text-ink-500 dark:hover:text-danger-400 transition-colors duration-200 shrink-0 ml-2">
+        <button data-idx="${i}" class="remove-file text-ink-500 dark:text-ink-400 hover:text-danger-500 dark:text-ink-500 dark:hover:text-danger-400 transition-colors duration-200 shrink-0 ml-2">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
@@ -201,6 +337,7 @@
   els.extractBtn.addEventListener('click', async () => {
     if (!state.files.length) return;
     clearError();
+    hideIncompleteBanner();
     setExtracting(true);
 
     const formData = new FormData();
@@ -223,16 +360,65 @@
       renderFileQueue();
       renderResults();
       updatePlanUi(data.plan);
+
+      // Banner PERSISTENTE (non un toast): l'IA potrebbe aver troncato
+      // l'estrazione di un file con troppi documenti al suo interno.
+      // Non va mai trattato come un successo silenzioso.
+      if (data.incomplete) {
+        showIncompleteBanner(data.incompleteMessage);
+      } else {
+        hideIncompleteBanner();
+      }
+
       const pagesLabel = typeof data.pagesProcessed === 'number'
         ? `, ${data.pagesProcessed} pagina/e in totale`
         : '';
       showToast(`Estrazione completata: ${state.rows.length} documento/i elaborato/i${pagesLabel}.`);
+      askPaywallSurvey();
     } catch (err) {
       showError(err.message);
     } finally {
       setExtracting(false);
     }
   });
+
+  function showIncompleteBanner(message) {
+    els.incompleteBannerText.innerHTML = `<strong>Estrazione incompleta.</strong> ${escapeHtml(message || "Alcuni documenti potrebbero non essere stati estratti.")}`;
+    els.incompleteBanner.classList.remove('hidden');
+  }
+  function hideIncompleteBanner() {
+    els.incompleteBanner.classList.add('hidden');
+  }
+
+  // ---------------------------------------------------------------
+  // Micro-sondaggio dopo ogni estrazione riuscita: usa window.confirm()
+  // nativo del browser invece di un banner custom nel DOM (più semplice
+  // e affidabile, nessun elemento da inserire/nascondere). Nessun
+  // collegamento ai dati delle fatture elaborate: solo risposta, timestamp
+  // e numero di estrazioni fatte finora in questa sessione, salvati in
+  // localStorage (nessuna chiamata al backend per ora).
+  // ---------------------------------------------------------------
+  const SURVEY_RESPONSES_KEY = 'ie_survey_responses';
+  let extractionCount = 0;
+
+  function askPaywallSurvey() {
+    extractionCount += 1;
+    const wouldPay = window.confirm(
+      'Ti è stato utile questo strumento? Clicca OK se pagheresti per usarlo, Annulla se no.',
+    );
+    const record = {
+      would_pay: wouldPay ? 'si' : 'no',
+      timestamp: Date.now(),
+      extraction_count: extractionCount,
+    };
+    try {
+      const existing = JSON.parse(localStorage.getItem(SURVEY_RESPONSES_KEY) || '[]');
+      existing.push(record);
+      localStorage.setItem(SURVEY_RESPONSES_KEY, JSON.stringify(existing));
+    } catch (_) {
+      // Non bloccante: il segnale è opzionale, non deve interrompere l'uso dell'app.
+    }
+  }
 
   function setExtracting(isLoading) {
     els.extractBtn.disabled = isLoading || !state.files.length;
@@ -281,7 +467,7 @@
             ` : ''}
           </td>
           <td class="px-3 py-2.5 text-center align-top">
-            <button class="remove-row text-ink-400 hover:text-danger-500 dark:text-ink-500 dark:hover:text-danger-400 transition-colors duration-200" data-idx="${i}" title="Rimuovi riga">
+            <button class="remove-row text-ink-500 dark:text-ink-400 hover:text-danger-500 dark:text-ink-500 dark:hover:text-danger-400 transition-colors duration-200" data-idx="${i}" title="Rimuovi riga">
               <svg class="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
             </button>
           </td>
@@ -384,37 +570,332 @@
   }
 
   // ---------------------------------------------------------------
+  // Autenticazione (Magic Link) e sezione "Il mio profilo"
+  //
+  // Nessuna password: l'utente riceve via email un link temporaneo che,
+  // una volta cliccato, imposta un cookie di sessione httpOnly lato
+  // server. Qui gestiamo solo l'interfaccia: apertura modali, invio
+  // della richiesta di link, lettura dello stato utente autenticato.
+  // ---------------------------------------------------------------
+  let currentAuthUser = null; // { email, recovery_email, plan } oppure null se non loggato
+
+  function openModal(modalEl) {
+    modalEl.classList.remove('hidden');
+  }
+  function closeModal(modalEl) {
+    modalEl.classList.add('hidden');
+  }
+
+  els.loginBtn?.addEventListener('click', () => {
+    els.loginModalMessage.classList.add('hidden');
+    els.loginForm.classList.remove('hidden');
+    els.loginEmailInput.value = '';
+    openModal(els.loginModal);
+    els.loginEmailInput.focus();
+  });
+  els.loginModalClose?.addEventListener('click', () => closeModal(els.loginModal));
+  els.loginModal?.addEventListener('click', (e) => {
+    if (e.target === els.loginModal) closeModal(els.loginModal);
+  });
+
+  els.loginForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = els.loginEmailInput.value.trim();
+    if (!email) return;
+
+    els.loginSubmitBtn.disabled = true;
+    els.loginSubmitBtn.textContent = 'Invio in corso…';
+    try {
+      const res = await fetch('/api/auth/request-magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': getUserId() },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      els.loginForm.classList.add('hidden');
+      els.loginModalMessage.textContent = data.message || 'Controlla la tua email: ti abbiamo inviato un link di accesso.';
+      els.loginModalMessage.classList.remove('hidden');
+    } catch (err) {
+      showToast('Errore di rete: riprova tra poco.', true);
+    } finally {
+      els.loginSubmitBtn.disabled = false;
+      els.loginSubmitBtn.textContent = 'Invia link di accesso';
+    }
+  });
+
+  // Menu a tendina dell'avatar: si apre/chiude al click, si chiude
+  // cliccando fuori.
+  els.accountBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    els.accountDropdown.classList.toggle('hidden');
+  });
+  els.accountDropdown?.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => {
+    els.accountDropdown?.classList.add('hidden');
+  });
+
+  function updateAccountModalUi(user) {
+    if (!user) return;
+    els.accountEmailReadonly.textContent = user.email || '—';
+    els.recoveryEmailInput.value = user.recovery_email || '';
+    updateAccountPlanUi(user.plan);
+  }
+
+  function updateAccountPlanUi(plan) {
+    if (!plan) return;
+    els.accountPlanName.textContent = PLAN_LABELS[plan.tier] || 'Piano Free';
+    const limitLabel = plan.limitLabel || plan.limit;
+    els.accountPlanUsage.textContent = `${plan.used}/${limitLabel} pagine`;
+    const isUnlimited = plan.tier === 'studio';
+    const pct = isUnlimited ? 100 : Math.min(100, plan.limit > 0 ? (plan.used / plan.limit) * 100 : 0);
+    els.accountPlanProgressBar.style.width = `${pct}%`;
+  }
+
+  function openAccountModal() {
+    els.accountDropdown?.classList.add('hidden');
+    updateAccountModalUi(currentAuthUser);
+    openModal(els.accountModal);
+  }
+  els.settingsBtn?.addEventListener('click', openAccountModal);
+  els.dropdownSettingsBtn?.addEventListener('click', openAccountModal);
+  els.mobileMenuSettingsBtn?.addEventListener('click', () => {
+    closeMobileMenu();
+    openAccountModal();
+  });
+  els.accountModalClose?.addEventListener('click', () => closeModal(els.accountModal));
+  els.accountModal?.addEventListener('click', (e) => {
+    if (e.target === els.accountModal) closeModal(els.accountModal);
+  });
+
+  els.recoveryEmailSaveBtn?.addEventListener('click', async () => {
+    const recoveryEmail = els.recoveryEmailInput.value.trim();
+    els.recoveryEmailSaveBtn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/recovery-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recovery_email: recoveryEmail || null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Impossibile salvare.');
+      if (currentAuthUser) currentAuthUser.recovery_email = recoveryEmail || null;
+      els.recoveryEmailMessage.textContent = 'Email di recupero salvata.';
+      els.recoveryEmailMessage.classList.remove('hidden');
+      clearTimeout(els.recoveryEmailSaveBtn._t);
+      els.recoveryEmailSaveBtn._t = setTimeout(() => els.recoveryEmailMessage.classList.add('hidden'), 3000);
+    } catch (err) {
+      showToast(err.message, true);
+    } finally {
+      els.recoveryEmailSaveBtn.disabled = false;
+    }
+  });
+
+  els.manageSubscriptionBtn?.addEventListener('click', async () => {
+    // Piano Free: nessun abbonamento da gestire, portiamo l'utente alla
+    // sezione prezzi invece di chiamare un endpoint che fallirebbe.
+    if (!currentAuthUser?.plan || currentAuthUser.plan.tier === 'free') {
+      closeModal(els.accountModal);
+      document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
+    const originalLabel = els.manageSubscriptionBtn.textContent;
+    els.manageSubscriptionBtn.disabled = true;
+    els.manageSubscriptionBtn.textContent = 'Attendere…';
+    try {
+      const res = await fetch('/api/stripe/create-portal-session', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) throw new Error(data.error || 'Impossibile aprire la gestione abbonamento.');
+      window.location.href = data.url;
+    } catch (err) {
+      showToast(err.message, true);
+      els.manageSubscriptionBtn.disabled = false;
+      els.manageSubscriptionBtn.textContent = originalLabel;
+    }
+  });
+
+  async function logout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (_) {
+      // Anche se la richiesta fallisce, ripuliamo comunque lo stato lato client.
+    }
+    closeModal(els.accountModal);
+    els.accountDropdown?.classList.add('hidden');
+    updateAuthUi(null);
+    showToast('Sei uscito dal tuo account.');
+    fetchInitialStatus();
+  }
+  els.dropdownLogoutBtn?.addEventListener('click', logout);
+  els.accountLogoutBtn?.addEventListener('click', logout);
+  els.mobileMenuLogoutBtn?.addEventListener('click', () => {
+    closeMobileMenu();
+    logout();
+  });
+
+  function updateAuthUi(user) {
+    currentAuthUser = user;
+    if (user) {
+      els.loginBtn.classList.add('hidden');
+      els.accountArea.classList.remove('hidden');
+      els.accountArea.classList.add('flex');
+      els.accountAvatarInitial.textContent = (user.email || '?').charAt(0).toUpperCase();
+      els.accountDropdownEmail.textContent = user.email || '';
+      els.mobileMenuSettingsBtn?.classList.remove('hidden');
+      els.mobileMenuLogoutBtn?.classList.remove('hidden');
+      updatePlanUi(user.plan);
+    } else {
+      els.loginBtn.classList.remove('hidden');
+      els.accountArea.classList.add('hidden');
+      els.accountArea.classList.remove('flex');
+      els.mobileMenuSettingsBtn?.classList.add('hidden');
+      els.mobileMenuLogoutBtn?.classList.add('hidden');
+    }
+  }
+
+  // Interroga /api/auth/me (basato sul cookie di sessione, inviato
+  // automaticamente dal browser essendo same-origin). Restituisce i dati
+  // utente se loggato, altrimenti null senza generare errori visibili.
+  async function fetchAuthStatus() {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (res.ok) {
+        const data = await res.json();
+        updateAuthUi(data);
+        return data;
+      }
+    } catch (_) {
+      // Non bloccante.
+    }
+    updateAuthUi(null);
+    return null;
+  }
+
+  // ---------------------------------------------------------------
   // Stripe Checkout
   //
   // Ogni card prezzi (tranne Free) ha un proprio pulsante con
   // data-plan="starter|business|growth|studio": il piano scelto viene
   // passato al backend per creare la Checkout Session corretta.
+  //
+  // Se l'utente NON è loggato, prima di procedere mostriamo un invito
+  // (non un blocco) ad accedere: un account collegato è ciò che gli
+  // permette di ritrovare/gestire l'abbonamento in futuro (Customer
+  // Portal). Può comunque scegliere di continuare senza accedere.
   // ---------------------------------------------------------------
-  document.querySelectorAll('.subscribe-plan-btn').forEach((btn) => {
+  let pendingCheckoutPlan = null;
+
+  async function startCheckout(plan, btn) {
     const originalLabel = btn.textContent;
-    btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Attendere…';
+    try {
+      const res = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': getUserId() },
+        body: JSON.stringify({ plan }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || 'Impossibile avviare il pagamento.');
+      }
+      window.location.href = data.url;
+    } catch (err) {
+      showToast(err.message, true);
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  }
+
+  document.querySelectorAll('.subscribe-plan-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
       const plan = btn.dataset.plan;
       if (!plan) return;
 
-      btn.disabled = true;
-      btn.textContent = 'Attendere…';
-      try {
-        const res = await fetch('/api/stripe/create-checkout-session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-User-Id': getUserId() },
-          body: JSON.stringify({ plan }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.url) {
-          throw new Error(data.error || 'Impossibile avviare il pagamento.');
-        }
-        window.location.href = data.url;
-      } catch (err) {
-        showToast(err.message, true);
-        btn.disabled = false;
-        btn.textContent = originalLabel;
+      // Modalità "waitlist" (pre-lancio, senza Partita IVA attiva): nessun
+      // checkout reale, raccogliamo solo l'interesse via /api/waitlist/join.
+      if (launchMode === 'waitlist') {
+        openWaitlistModal(btn);
+        return;
       }
+
+      if (!currentAuthUser) {
+        pendingCheckoutPlan = plan;
+        openModal(els.preCheckoutModal);
+        return;
+      }
+      startCheckout(plan, btn);
     });
+  });
+
+  // ---------------------------------------------------------------
+  // Lista d'attesa (LAUNCH_MODE=waitlist)
+  // ---------------------------------------------------------------
+  let waitlistPlan = null;
+
+  function openWaitlistModal(btn) {
+    waitlistPlan = btn.dataset.plan;
+    const planName = btn.dataset.planName || waitlistPlan;
+    const price = btn.dataset.price || '';
+    els.waitlistModalPlanInfo.textContent = price
+      ? `Ti interessa il piano ${planName} a ${price}/mese?`
+      : `Ti interessa il piano ${planName}?`;
+    els.waitlistModalError.classList.add('hidden');
+    els.waitlistEmailInput.value = '';
+    els.waitlistForm.classList.remove('hidden');
+    els.waitlistModalFormView.classList.remove('hidden');
+    els.waitlistModalThankyouView.classList.add('hidden');
+    openModal(els.waitlistModal);
+    els.waitlistEmailInput.focus();
+  }
+
+  els.waitlistForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = els.waitlistEmailInput.value.trim();
+    if (!email || !waitlistPlan) return;
+
+    els.waitlistModalError.classList.add('hidden');
+    els.waitlistSubmitBtn.disabled = true;
+    const originalLabel = els.waitlistSubmitBtn.textContent;
+    els.waitlistSubmitBtn.textContent = 'Invio in corso…';
+    try {
+      const res = await fetch('/api/waitlist/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, plan: waitlistPlan }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Impossibile registrare la richiesta.');
+
+      els.waitlistModalFormView.classList.add('hidden');
+      els.waitlistModalThankyouView.classList.remove('hidden');
+    } catch (err) {
+      els.waitlistModalError.textContent = err.message;
+      els.waitlistModalError.classList.remove('hidden');
+    } finally {
+      els.waitlistSubmitBtn.disabled = false;
+      els.waitlistSubmitBtn.textContent = originalLabel;
+    }
+  });
+
+  els.waitlistModalClose?.addEventListener('click', () => closeModal(els.waitlistModal));
+  els.waitlistModal?.addEventListener('click', (e) => {
+    if (e.target === els.waitlistModal) closeModal(els.waitlistModal);
+  });
+
+  els.preCheckoutLoginBtn?.addEventListener('click', () => {
+    closeModal(els.preCheckoutModal);
+    els.loginBtn.click();
+  });
+  els.preCheckoutContinueBtn?.addEventListener('click', () => {
+    closeModal(els.preCheckoutModal);
+    if (!pendingCheckoutPlan) return;
+    const btn = document.querySelector(`.subscribe-plan-btn[data-plan="${pendingCheckoutPlan}"]`);
+    if (btn) startCheckout(pendingCheckoutPlan, btn);
+  });
+  els.preCheckoutModalClose?.addEventListener('click', () => closeModal(els.preCheckoutModal));
+  els.preCheckoutModal?.addEventListener('click', (e) => {
+    if (e.target === els.preCheckoutModal) closeModal(els.preCheckoutModal);
   });
 
   // ---------------------------------------------------------------
@@ -432,16 +913,36 @@
   const PLAN_BADGE_FREE_CLASSES = ['bg-ink-100', 'text-ink-600', 'dark:bg-ink-800', 'dark:text-ink-300'];
   const PLAN_BADGE_PAID_CLASSES = ['bg-brand-100', 'text-brand-700', 'dark:bg-brand-900/40', 'dark:text-brand-300'];
 
-  function updatePlanUi(plan) {
+  // Un piano a pagamento deve sempre risultare legato a un'identità
+  // verificabile (l'email dell'account), non al solo ID anonimo salvato in
+  // localStorage: chiunque usi lo stesso browser/dispositivo (o l'utente
+  // stesso dopo un logout) vedrebbe altrimenti un piano a pagamento che
+  // non è "suo" in alcun senso verificabile. Perciò, se non c'è una sessione
+  // autenticata attiva, mostriamo sempre "Piano Free" anche se l'ID anonimo
+  // sottostante risulta collegato a un piano a pagamento.
+  //
+  // Eccezione voluta: subito dopo un checkout completato in questa stessa
+  // scheda (vedi pollForPlanActivation), mostriamo la conferma immediata del
+  // piano appena attivato anche da anonimi — è un riscontro dell'azione
+  // appena compiuta dall'utente, non uno stato "ritrovato" da una sessione
+  // precedente, e coincide con il messaggio di conferma mostrato in toast.
+  function updatePlanUi(plan, { allowAnonymousPaid = false } = {}) {
     if (!plan) return;
-    const isPaid = plan.tier !== 'free';
-    els.planBadge.textContent = PLAN_LABELS[plan.tier] || 'Piano Free';
+    const showAsFree = !currentAuthUser && plan.tier !== 'free' && !allowAnonymousPaid;
+    const displayTier = showAsFree ? 'free' : plan.tier;
+    const isPaid = displayTier !== 'free';
+
+    els.planBadge.textContent = PLAN_LABELS[displayTier] || 'Piano Free';
     els.planBadge.classList.remove(...PLAN_BADGE_FREE_CLASSES, ...PLAN_BADGE_PAID_CLASSES);
     els.planBadge.classList.add(...(isPaid ? PLAN_BADGE_PAID_CLASSES : PLAN_BADGE_FREE_CLASSES));
     els.planBadge.classList.remove('hidden');
 
-    const limitLabel = plan.limitLabel || plan.limit;
-    els.scanLimitInfo.textContent = `Pagine elaborate questo mese: ${plan.used}/${limitLabel}`;
+    if (showAsFree) {
+      els.scanLimitInfo.textContent = 'Accedi per vedere l\'utilizzo del tuo abbonamento.';
+    } else {
+      const limitLabel = plan.limitLabel || plan.limit;
+      els.scanLimitInfo.textContent = `Pagine elaborate questo mese: ${plan.used}/${limitLabel}`;
+    }
   }
 
   async function fetchInitialStatus() {
@@ -466,23 +967,114 @@
         if (data.maxFileSizeMb) {
           els.maxSizeLabel.textContent = data.maxFileSizeMb;
         }
+        launchMode = data.launchMode === 'live' ? 'live' : 'waitlist';
+        applyLaunchModeUi();
       }
-    } catch (_) { /* usa i default */ }
+    } catch (_) { /* usa i default: launchMode resta "waitlist" */ }
+  }
+
+  // ---------------------------------------------------------------
+  // Modalità di lancio (waitlist vs live) — vedi src/server.js /api/config.
+  // Il piano Free non è mai interessato: resta sempre un link diretto
+  // all'uso del prodotto, indipendentemente da questo interruttore.
+  // ---------------------------------------------------------------
+  let launchMode = 'waitlist';
+
+  function applyLaunchModeUi() {
+    if (launchMode === 'waitlist') {
+      els.pricingLaunchBadge?.classList.remove('hidden');
+      document.querySelectorAll('.subscribe-plan-btn').forEach((btn) => {
+        const planName = btn.dataset.planName || '';
+        btn.textContent = 'Richiedi accesso anticipato';
+        if (planName) btn.setAttribute('aria-label', `Richiedi accesso anticipato al piano ${planName}`);
+      });
+    } else {
+      els.pricingLaunchBadge?.classList.add('hidden');
+    }
   }
 
   // ---------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------
   document.getElementById('year').textContent = new Date().getFullYear();
-  fetchInitialStatus();
+
+  // Se l'utente è già loggato (cookie di sessione valido), fetchAuthStatus
+  // popola subito navbar e piano reale; altrimenti ricadiamo sullo stato
+  // anonimo basato su X-User-Id, invariato rispetto a prima.
+  fetchAuthStatus().then((user) => {
+    if (!user) fetchInitialStatus();
+  });
   fetchConfig();
 
-  // Se l'utente torna da Stripe Checkout con esito positivo, aggiorna lo stato
+  // Se l'utente torna da Stripe Checkout, NON ci fidiamo mai del solo
+  // parametro URL "?checkout=success": indica solo che Stripe ha completato
+  // il pagamento e reindirizzato il browser, non che il nostro webhook abbia
+  // già attivato l'abbonamento nel database (la scrittura avviene in modo
+  // asincrono, con una latenza variabile). Interroghiamo quindi lo stato
+  // reale con qualche tentativo ravvicinato prima di dichiarare successo.
+  async function pollForPlanActivation(maxAttempts = 8, intervalMs = 1500) {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const res = await fetch('/api/stripe/status', { headers: { 'X-User-Id': getUserId() } });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.plan) {
+            // Conferma immediata dell'azione appena compiuta (checkout in
+            // questa stessa scheda): va mostrata anche da anonimi, vedi
+            // il commento su updatePlanUi.
+            updatePlanUi(data.plan, { allowAnonymousPaid: true });
+            if (data.plan.tier !== 'free') {
+              return data.plan;
+            }
+          }
+        }
+      } catch (_) {
+        // Riprova al tentativo successivo.
+      }
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+    }
+    return null;
+  }
+
   const params = new URLSearchParams(window.location.search);
   if (params.get('checkout') === 'success') {
-    showToast('Abbonamento attivato con successo! Grazie.');
-    setTimeout(fetchInitialStatus, 1500);
+    // Rimuove il parametro dall'URL subito, così un refresh manuale non
+    // ripete il polling né mostra di nuovo il messaggio.
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showToast('Pagamento ricevuto: stiamo attivando il tuo abbonamento…');
+    pollForPlanActivation().then((plan) => {
+      if (plan) {
+        showToast(`${PLAN_LABELS[plan.tier] || 'Abbonamento'} attivato con successo! Grazie.`);
+      } else {
+        showToast(
+          "Pagamento ricevuto, ma l'attivazione sta richiedendo più tempo del previsto. Ricarica la pagina tra qualche istante; se il piano non risulta aggiornato, contatta il supporto.",
+          true,
+        );
+      }
+    });
   } else if (params.get('checkout') === 'cancel') {
+    window.history.replaceState({}, document.title, window.location.pathname);
     showToast('Pagamento annullato.', true);
+  }
+
+  // Redirect dal login via Magic Link (vedi src/routes/auth.js -> /verify).
+  if (params.get('login') === 'success') {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showToast('Accesso effettuato con successo!');
+    fetchAuthStatus();
+  } else if (params.get('login') === 'expired') {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showToast('Il link di accesso non è valido o è scaduto. Richiedine uno nuovo.', true);
+  }
+
+  // Ritorno dal Customer Portal Stripe (return_url): riapre la sezione
+  // profilo con lo stato aggiornato.
+  if (params.get('section') === 'account') {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    fetchAuthStatus().then((user) => {
+      if (user) openAccountModal();
+    });
   }
 })();

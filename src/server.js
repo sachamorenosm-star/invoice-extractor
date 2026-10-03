@@ -4,11 +4,15 @@ const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 
 const extractRoutes = require('./routes/extract');
 const exportRoutes = require('./routes/export');
 const stripeRoutes = require('./routes/stripe');
+const authRoutes = require('./routes/auth');
+const waitlistRoutes = require('./routes/waitlist');
+const feedbackRoutes = require('./routes/feedback');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -55,6 +59,12 @@ app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 // Parser JSON per tutte le altre rotte
 app.use(express.json({ limit: '1mb' }));
 
+// Cookie parser: serve a leggere il cookie di sessione httpOnly impostato
+// dopo il login via Magic Link (vedi src/services/authService.js). Il
+// cookie contiene un JWT firmato, non serve un secret qui: la verifica
+// della firma avviene dentro authService con SESSION_SECRET.
+app.use(cookieParser());
+
 // ---------------------------------------------------------------------
 // File statici (frontend)
 // ---------------------------------------------------------------------
@@ -68,6 +78,10 @@ app.get('/api/config', (req, res) => {
     maxFileSizeMb: parseInt(process.env.MAX_FILE_SIZE_MB, 10) || 10,
     maxFilesPerRequest: parseInt(process.env.MAX_FILES_PER_REQUEST, 10) || 10,
     stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null,
+    // "waitlist" (default, pre-lancio senza Partita IVA attiva): i piani a
+    // pagamento raccolgono l'interesse invece di avviare un vero checkout.
+    // "live": comportamento normale, checkout Stripe reale.
+    launchMode: process.env.LAUNCH_MODE === 'live' ? 'live' : 'waitlist',
   });
 });
 
@@ -81,6 +95,9 @@ app.get('/api/health', (req, res) => {
 app.use('/api/extract', extractRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/stripe', stripeRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/waitlist', waitlistRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // ---------------------------------------------------------------------
 // 404 + error handler

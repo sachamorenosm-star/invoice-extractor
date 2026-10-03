@@ -38,9 +38,88 @@ db.exec(`
   ON users (stripe_customer_id);
 `);
 
+// ---------------------------------------------------------------------
+// Migrazione leggera: aggiunge le colonne "email"/"recovery_email" a un
+// database già esistente (creato prima dell'introduzione del login via
+// Magic Link) senza distruggere i dati già presenti. ALTER TABLE ADD
+// COLUMN fallisce se la colonna esiste già, quindi controlliamo prima.
+// ---------------------------------------------------------------------
+function ensureColumn(table, column, definition) {
+  const existingColumns = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!existingColumns.includes(column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+ensureColumn('users', 'email', 'TEXT');
+ensureColumn('users', 'recovery_email', 'TEXT');
+
+// Indice univoco parziale: l'email deve essere unica quando presente, ma
+// gli utenti anonimi (email NULL) restano illimitati e non in conflitto
+// tra loro.
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
+  ON users (email) WHERE email IS NOT NULL;
+`);
+
+// ---------------------------------------------------------------------
+// Token di accesso "Magic Link": monouso, scadenza breve (15 minuti),
+// mai persistiti in chiaro nei log. anon_user_id collega opzionalmente
+// il login al profilo anonimo (piano/pagine) già esistente nel browser,
+// per la migrazione automatica al primo accesso (vedi authService.js).
+// ---------------------------------------------------------------------
+db.exec(`
+  CREATE TABLE IF NOT EXISTS login_tokens (
+    token TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    anon_user_id TEXT,
+    expires_at INTEGER NOT NULL,
+    used INTEGER NOT NULL DEFAULT 0
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_login_tokens_email
+  ON login_tokens (email);
+`);
+
+// ---------------------------------------------------------------------
+// Lista d'attesa (modalità pre-lancio, LAUNCH_MODE=waitlist): registra
+// l'interesse per un piano senza processare alcun pagamento reale.
+// ---------------------------------------------------------------------
+db.exec(`
+  CREATE TABLE IF NOT EXISTS waitlist_signups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    plan TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_waitlist_signups_email
+  ON waitlist_signups (email);
+`);
+
+// ---------------------------------------------------------------------
+// Segnali di feedback dal micro-sondaggio post-estrazione: nessun
+// collegamento ai dati delle fatture elaborate, solo il segnale in
+// forma aggregata/anonima (email solo se lasciata volontariamente).
+// ---------------------------------------------------------------------
+db.exec(`
+  CREATE TABLE IF NOT EXISTS feedback_signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usefulness_rating TEXT NOT NULL,
+    would_pay TEXT NOT NULL,
+    optional_email TEXT,
+    created_at INTEGER NOT NULL
+  );
+`);
+
 const statements = {
   getUser: db.prepare('SELECT * FROM users WHERE user_id = ?'),
   getUserByCustomerId: db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?'),
+  getUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
   insertUser: db.prepare(`
     INSERT INTO users (user_id, tier, scans_used, period_key, stripe_customer_id, stripe_subscription_id)
     VALUES (@user_id, @tier, @scans_used, @period_key, @stripe_customer_id, @stripe_subscription_id)
@@ -54,6 +133,24 @@ const statements = {
       stripe_subscription_id = @stripe_subscription_id
     WHERE user_id = @user_id
   `),
+  updateUserAuth: db.prepare(`
+    UPDATE users SET email = @email, recovery_email = @recovery_email
+    WHERE user_id = @user_id
+  `),
+  insertLoginToken: db.prepare(`
+    INSERT INTO login_tokens (token, email, anon_user_id, expires_at, used)
+    VALUES (@token, @email, @anon_user_id, @expires_at, 0)
+  `),
+  getLoginToken: db.prepare('SELECT * FROM login_tokens WHERE token = ?'),
+  markLoginTokenUsed: db.prepare('UPDATE login_tokens SET used = 1 WHERE token = ?'),
+  insertWaitlistSignup: db.prepare(`
+    INSERT INTO waitlist_signups (email, plan, created_at)
+    VALUES (@email, @plan, @created_at)
+  `),
+  insertFeedbackSignal: db.prepare(`
+    INSERT INTO feedback_signals (usefulness_rating, would_pay, optional_email, created_at)
+    VALUES (@usefulness_rating, @would_pay, @optional_email, @created_at)
+  `),
 };
 
 function getUser(userId) {
@@ -65,6 +162,11 @@ function getUserByCustomerId(stripeCustomerId) {
   return statements.getUserByCustomerId.get(stripeCustomerId) || null;
 }
 
+function getUserByEmail(email) {
+  if (!email) return null;
+  return statements.getUserByEmail.get(email) || null;
+}
+
 function insertUser(user) {
   statements.insertUser.run(user);
 }
@@ -73,10 +175,46 @@ function saveUser(user) {
   statements.updateUser.run(user);
 }
 
+function updateUserAuth({ user_id: userId, email, recovery_email: recoveryEmail }) {
+  statements.updateUserAuth.run({ user_id: userId, email: email || null, recovery_email: recoveryEmail || null });
+}
+
+function insertLoginToken({ token, email, anon_user_id: anonUserId, expires_at: expiresAt }) {
+  statements.insertLoginToken.run({ token, email, anon_user_id: anonUserId || null, expires_at: expiresAt });
+}
+
+function getLoginToken(token) {
+  return statements.getLoginToken.get(token) || null;
+}
+
+function markLoginTokenUsed(token) {
+  statements.markLoginTokenUsed.run(token);
+}
+
+function insertWaitlistSignup({ email, plan }) {
+  statements.insertWaitlistSignup.run({ email, plan, created_at: Date.now() });
+}
+
+function insertFeedbackSignal({ usefulness_rating: usefulnessRating, would_pay: wouldPay, optional_email: optionalEmail }) {
+  statements.insertFeedbackSignal.run({
+    usefulness_rating: usefulnessRating,
+    would_pay: wouldPay,
+    optional_email: optionalEmail || null,
+    created_at: Date.now(),
+  });
+}
+
 module.exports = {
   db,
   getUser,
   getUserByCustomerId,
+  getUserByEmail,
   insertUser,
   saveUser,
+  updateUserAuth,
+  insertLoginToken,
+  getLoginToken,
+  markLoginTokenUsed,
+  insertWaitlistSignup,
+  insertFeedbackSignal,
 };

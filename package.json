@@ -13,14 +13,17 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "better-sqlite3": "^13.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "exceljs": "^4.4.0",
     "express": "^4.21.1",
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.0",
     "pdf-lib": "^1.17.1",
+    "resend": "^6.28.1",
     "stripe": "^17.3.1",
     "uuid": "^11.0.3"
   },
