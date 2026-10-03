@@ -84,6 +84,12 @@ function getTodayKey() {
   return new Date().toISOString().split('T')[0];
 }
 
+// NON autoritativa: lettura read-only, utile solo per riepiloghi/stato
+// (es. frontend). La richiesta HTTP reale autorizza l'estrazione TEST_MODE
+// esclusivamente tramite reserveTestDailyQuota() (vedi enforceScanLimit in
+// src/middleware/auth.js), che esegue check+incremento in una sola
+// transazione atomica. Questa funzione non deve mai, da sola, precedere
+// una chiamata ad Anthropic.
 function canScanTestMode(userId, count = 1) {
   const limit = getTestDailyLimit();
   if (limit <= 0) return false;

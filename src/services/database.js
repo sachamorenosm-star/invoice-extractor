@@ -13,10 +13,14 @@ const Database = require('better-sqlite3');
 // -----------------------------------------------------------------------
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
-const DB_PATH = path.join(DATA_DIR, 'invoice-extractor.sqlite');
+// TEST_DB_PATH: usato SOLO dai test automatici per puntare a un file SQLite
+// isolato e temporaneo, senza mai toccare il database reale. Non impostata
+// in produzione: il comportamento di default resta identico a prima.
+const DB_PATH = process.env.TEST_DB_PATH || path.join(DATA_DIR, 'invoice-extractor.sqlite');
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+const dbDir = path.dirname(DB_PATH);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
 }
 
 const db = new Database(DB_PATH);

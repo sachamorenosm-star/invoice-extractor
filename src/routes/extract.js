@@ -4,7 +4,7 @@ const { upload } = require('../middleware/upload');
 const { identifyUser, enforceScanLimit } = require('../middleware/auth');
 const { extractInvoiceData } = require('../services/claudeService');
 const { applyIndependentVerification } = require('../utils/mathVerifier');
-const { getPlanStatus, recordScans, getTestDailyStatus } = require('../services/stripeService');
+const { getPlanStatus, recordScans, releaseTestDailyQuota } = require('../services/stripeService');
 const { countTotalPages } = require('../utils/pageCounter');
 
 const router = express.Router();
@@ -47,7 +47,11 @@ const extractLimiter = rateLimit({
 // che lo supererebbe viene bloccata senza sprecare crediti IA.
 async function countRequestPages(req) {
   if (!req.files || req.files.length === 0) return 0;
-  const { total } = await countTotalPages(req.files);
+  const { counts, total } = await countTotalPages(req.files);
+  // Pagine per singolo file (stesso ordine di req.files): il route handler
+  // le riusa per rilasciare la quota TEST_MODE solo dei file che falliscono
+  // l'estrazione, senza doverle ricontare.
+  req.pageCountsPerFile = counts;
   return total;
 }
 
@@ -59,13 +63,21 @@ router.post(
   upload.array('invoices'),
   enforceScanLimit(countRequestPages),
   async (req, res, next) => {
+    const isTestMode = process.env.TEST_MODE === 'true';
+    const userId = req.userId || 'anonymous-shared';
+    const totalPages = req.scanCount;
+    // Diventa true solo quando la quota TEST_MODE riservata è stata
+    // interamente "sistemata" (mantenuta per i successi, rilasciata per i
+    // fallimenti). Usato dalla rete di sicurezza nel catch per non perdere
+    // mai quota riservata in caso di errore imprevisto.
+    let testQuotaSettled = false;
+
     try {
       if (!req.files || req.files.length === 0) {
         return res.status(400).json({ error: 'Nessun file caricato.' });
       }
 
-      const userId = req.userId || 'anonymous-shared';
-      const totalPages = req.scanCount;
+      const pageCounts = req.pageCountsPerFile || req.files.map(() => 1);
 
       // Elaborazione in parallelo: ogni file è un Buffer in RAM, inviato a
       // Claude e mai scritto su disco (GDPR zero-retention). Un singolo file
@@ -75,11 +87,13 @@ router.post(
       // appiattiamo in un'unica lista di risultati e aggreghiamo per
       // segnalare un'eventuale estrazione incompleta (troncamento IA).
       const resultsPerFile = await Promise.all(
-        req.files.map(async (file) => {
+        req.files.map(async (file, index) => {
           try {
             const extraction = await extractInvoiceData(file.buffer, file.mimetype, file.originalname);
             return {
               filename: file.originalname,
+              pages: pageCounts[index],
+              failed: false,
               records: extraction.records.map((extracted) => applyIndependentVerification(extracted)),
               truncated: extraction.truncated,
               extractedCount: extraction.extractedCount,
@@ -87,6 +101,8 @@ router.post(
           } catch (err) {
             return {
               filename: file.originalname,
+              pages: pageCounts[index],
+              failed: true,
               records: [{
                 source_file: file.originalname,
                 supplier: '',
@@ -111,10 +127,27 @@ router.post(
       const results = resultsPerFile.flatMap((r) => r.records);
       const truncatedFiles = resultsPerFile.filter((r) => r.truncated);
 
-      // Il conteggio pagine (e quindi il consumo di quota) resta invariato:
-      // si basa sulle pagine REALI del PDF (totalPages), non sul numero di
-      // fatture riconosciute al suo interno.
-      recordScans(userId, totalPages);
+      if (isTestMode) {
+        // La quota TEST_MODE per totalPages è già stata riservata
+        // ATOMICAMENTE in enforceScanLimit, PRIMA della chiamata ad
+        // Anthropic. Qui rilasciamo solo le pagine dei file che sono
+        // effettivamente falliti: le pagine dei file riusciti restano
+        // consumate dalla riserva. NON chiamiamo recordScans qui: lo
+        // farebbe incrementare di nuovo la stessa quota già riservata
+        // (double counting).
+        const failedPages = resultsPerFile
+          .filter((r) => r.failed)
+          .reduce((sum, r) => sum + r.pages, 0);
+        if (failedPages > 0) {
+          releaseTestDailyQuota(userId, failedPages);
+        }
+        testQuotaSettled = true;
+      } else {
+        // Il conteggio pagine (e quindi il consumo di quota) resta invariato:
+        // si basa sulle pagine REALI del PDF (totalPages), non sul numero di
+        // fatture riconosciute al suo interno.
+        recordScans(userId, totalPages);
+      }
 
       const responseBody = {
         results,
@@ -137,6 +170,15 @@ router.post(
 
       res.json(responseBody);
     } catch (err) {
+      // Rete di sicurezza: se un errore imprevisto interrompe la richiesta
+      // DOPO la riserva atomica TEST_MODE ma prima che le pagine siano state
+      // "sistemate" (mantenute o rilasciate), rilasciamo l'intera quota
+      // riservata per non perderla permanentemente. decrementTestUsage ha
+      // già un floor a zero, quindi un rilascio ridondante non può mai
+      // portare il contatore sotto zero.
+      if (isTestMode && !testQuotaSettled) {
+        releaseTestDailyQuota(userId, totalPages);
+      }
       next(err);
     }
   },

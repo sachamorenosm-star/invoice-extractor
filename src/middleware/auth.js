@@ -1,4 +1,4 @@
-const { canScan, getPlanStatus, getTestDailyStatus } = require('../services/stripeService');
+const { canScan, getPlanStatus, getTestDailyStatus, reserveTestDailyQuota } = require('../services/stripeService');
 const authService = require('../services/authService');
 
 const USER_ID_PATTERN = /^usr_[a-zA-Z0-9-]{8,64}$/;
@@ -45,9 +45,14 @@ function enforceScanLimit(countFn = 1) {
       const count = typeof countFn === 'function' ? await countFn(req) : countFn;
       req.scanCount = count;
 
-      if (!canScan(userId, count)) {
-        // TEST_MODE uses different response format
-        if (process.env.TEST_MODE === 'true') {
+      if (process.env.TEST_MODE === 'true') {
+        // TEST_MODE: la riserva atomica È la decisione di autorizzazione.
+        // Un controllo read-only qui (canScan/canScanTestMode) riapre la
+        // finestra di race TOCTOU che questa riserva elimina: check e
+        // incremento avvengono in un'unica transazione DB, PRIMA di
+        // chiamare Anthropic. Non usare più canScan per TEST_MODE.
+        const reserved = reserveTestDailyQuota(userId, count);
+        if (!reserved) {
           const { limit, used, resetAt } = getTestDailyStatus(userId);
           return res.status(429).json({
             error: 'Limite di estrazione di test raggiunto. Riprova domani.',
@@ -57,8 +62,12 @@ function enforceScanLimit(countFn = 1) {
             resetAt,
           });
         }
+        return next();
+      }
 
-        // Normal plan-based response
+      // Normale (non-TEST_MODE): comportamento invariato, basato sul
+      // piano mensile pagato.
+      if (!canScan(userId, count)) {
         const plan = getPlanStatus(userId);
         const remaining = Math.max(plan.limit - plan.used, 0);
         const limitDescription = plan.tier === 'studio'
