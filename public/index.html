@@ -330,7 +330,7 @@
 
     <!-- Upload zone -->
     <div id="drop-zone" class="drop-zone border-2 border-dashed border-ink-200 rounded-3xl bg-white p-10 text-center transition-all duration-200 cursor-pointer hover:border-brand-300 hover:shadow-card dark:bg-ink-900 dark:border-ink-700 dark:hover:border-brand-500" tabindex="0" role="button" aria-label="Area di caricamento file: trascina un file, incolla con Ctrl+V, oppure premi Invio per selezionarne uno dal computer">
-      <input id="file-input" type="file" class="hidden" multiple accept=".pdf,image/jpeg,image/png,image/webp" />
+      <input id="file-input" type="file" class="hidden" multiple accept=".pdf,image/jpeg,image/png,image/webp" capture="environment" />
       <span class="mx-auto flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-50 dark:bg-brand-900/30">
         <svg class="w-7 h-7 text-brand-600 dark:text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
