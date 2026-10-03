@@ -192,6 +192,30 @@ async function createCheckoutSession(userId, planKey) {
   return session;
 }
 
+// -----------------------------------------------------------------------
+// Stripe Customer Portal — permette all'utente di gestire autonomamente
+// l'abbonamento esistente (cambio piano, metodo di pagamento, fatture,
+// disdetta) senza dover reimplementare quella UI.
+// -----------------------------------------------------------------------
+async function createPortalSession(stripeCustomerId, returnUrl) {
+  if (!stripe) {
+    throw Object.assign(new Error('Stripe non configurato sul server.'), { status: 500 });
+  }
+  if (!stripeCustomerId) {
+    throw Object.assign(
+      new Error('Nessun abbonamento attivo da gestire per questo account.'),
+      { status: 400 },
+    );
+  }
+
+  const session = await stripe.billingPortal.sessions.create({
+    customer: stripeCustomerId,
+    return_url: returnUrl || process.env.FRONTEND_URL || 'http://localhost:3000',
+  });
+
+  return session;
+}
+
 function constructWebhookEvent(rawBody, signature) {
   if (!stripe) {
     throw Object.assign(new Error('Stripe non configurato sul server.'), { status: 500 });
@@ -234,6 +258,7 @@ async function handleWebhookEvent(event) {
         break;
       }
       activateSubscription(userId, session.customer, session.subscription, tier);
+      console.log(`[stripeService] Abbonamento attivato: utente ${userId} -> piano "${tier}" (subscription ${session.subscription}).`);
       break;
     }
     case 'customer.subscription.updated': {
@@ -277,6 +302,7 @@ module.exports = {
   recordScans,
   activateSubscription,
   createCheckoutSession,
+  createPortalSession,
   constructWebhookEvent,
   handleWebhookEvent,
 };
