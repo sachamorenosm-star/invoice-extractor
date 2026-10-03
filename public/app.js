@@ -7,6 +7,8 @@
   const state = {
     files: [],       // File[] in coda per l'upload
     rows: [],        // Dati estratti (editabili) mostrati nella data grid
+    testMode: false, // TEST_MODE=true se la versione è gratuita durante la beta
+    testDailyLimit: null, // Limite pagine giornaliere TEST_MODE, null se non attivo
   };
 
   const els = {
@@ -17,6 +19,8 @@
     extractSpinner: document.getElementById('extract-spinner'),
     extractBtnLabel: document.getElementById('extract-btn-label'),
     errorBanner: document.getElementById('error-banner'),
+    betaBanner: document.getElementById('beta-banner'),
+    betaBannerText: document.getElementById('beta-banner-text'),
     resultsSection: document.getElementById('results-section'),
     resultsTbody: document.getElementById('results-tbody'),
     warningBanner: document.getElementById('warning-banner'),
@@ -352,6 +356,15 @@
       const data = await res.json();
 
       if (!res.ok) {
+        // Gestisci errori specifici di TEST_MODE prima del generico
+        if (res.status === 401 && data.code === 'TEST_MODE_AUTH_REQUIRED') {
+          showError('Accedi con il tuo link magico per utilizzare gratuitamente la versione di test.');
+          return; // Non lanciare l'eccezione generica
+        }
+        if (res.status === 429 && data.code === 'TEST_DAILY_LIMIT_REACHED') {
+          showError('Hai raggiunto il limite giornaliero della versione di test. Potrai riprovare domani.');
+          return; // Non lanciare l'eccezione generica
+        }
         throw new Error(data.error || 'Errore durante l\'estrazione dei dati.');
       }
 
@@ -969,8 +982,40 @@
         }
         launchMode = data.launchMode === 'live' ? 'live' : 'waitlist';
         applyLaunchModeUi();
+
+        // TEST_MODE beta UX: carica la configurazione della versione di test
+        if (data.testMode === true) {
+          state.testMode = true;
+          state.testDailyLimit = data.testDailyLimit || 50;
+          updateBetaBannerUi();
+        } else {
+          state.testMode = false;
+          state.testDailyLimit = null;
+          hideBetaBanner();
+        }
       }
-    } catch (_) { /* usa i default: launchMode resta "waitlist" */ }
+    } catch (_) { /* usa i default */ }
+  }
+
+  function updateBetaBannerUi() {
+    if (state.testMode && state.testDailyLimit > 0) {
+      // Mostra il banner beta con il limite giornaliero
+      const limitText = state.testDailyLimit === 50
+        ? 'fino a 50 pagine al giorno'
+        : `fino a ${state.testDailyLimit} pagine al giorno`;
+      els.betaBannerText.textContent = `Versione di test — gratuita durante la fase di validazione · ${limitText}`;
+      els.betaBanner.classList.remove('hidden');
+    } else if (state.testMode && state.testDailyLimit <= 0) {
+      // Estrazione temporaneamente non disponibile
+      els.betaBannerText.textContent = 'Versione di test — estrazione temporaneamente non disponibile';
+      els.betaBanner.classList.remove('hidden');
+    } else {
+      hideBetaBanner();
+    }
+  }
+
+  function hideBetaBanner() {
+    els.betaBanner.classList.add('hidden');
   }
 
   // ---------------------------------------------------------------

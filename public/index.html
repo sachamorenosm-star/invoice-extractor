@@ -322,6 +322,12 @@
   <!-- APP: UPLOAD + PREVIEW -->
   <section id="app" class="max-w-6xl mx-auto px-4 sm:px-6 pb-20">
 
+    <!-- Beta mode banner -->
+    <div id="beta-banner" class="hidden mb-6 p-4 rounded-2xl bg-brand-50 border border-brand-100 text-brand-800 dark:bg-brand-900/20 dark:border-brand-800/60 dark:text-brand-200 text-sm flex items-center gap-2.5">
+      <svg class="w-5 h-5 shrink-0 text-brand-600 dark:text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12.75 3.03v.568c0 .334.148.646.407.841l10.823 8.051c.45.355.450.975 0 1.33L13.157 21.577c-.259.195-.407.507-.407.841v.568c0 .621.504 1.125 1.125 1.125h8.25c.621 0 1.125-.504 1.125-1.125v-9.75c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125zm0-3.03h8.25c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-8.25c-.621 0-1.125-.504-1.125-1.125V1.125C11.625.504 12.129 0 12.75 0zm0 15.75h8.25c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-8.25c-.621 0-1.125-.504-1.125-1.125v-9.75c0-.621.504-1.125 1.125-1.125z" /></svg>
+      <span id="beta-banner-text">Versione di test — gratuita durante la fase di validazione</span>
+    </div>
+
     <!-- Upload zone -->
     <div id="drop-zone" class="drop-zone border-2 border-dashed border-ink-200 rounded-3xl bg-white p-10 text-center transition-all duration-200 cursor-pointer hover:border-brand-300 hover:shadow-card dark:bg-ink-900 dark:border-ink-700 dark:hover:border-brand-500" tabindex="0" role="button" aria-label="Area di caricamento file: trascina un file, incolla con Ctrl+V, oppure premi Invio per selezionarne uno dal computer">
       <input id="file-input" type="file" class="hidden" multiple accept=".pdf,image/jpeg,image/png,image/webp" />
