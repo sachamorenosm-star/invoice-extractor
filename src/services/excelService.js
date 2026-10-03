@@ -427,16 +427,18 @@ function generateCsv(rows) {
   rows.forEach((row) => {
     const check = verifyInvoiceMath(row);
     const rowCurrency = row.currency || singleCurrency || 'EUR';
+    // Le celle di testo (non attendibili) passano da neutralizeFormula; i
+    // tre importi sono già stringhe numeriche formattate e restano intatti.
     const values = [
-      row.source_file,
-      row.supplier,
-      row.invoice_number,
-      row.date,
+      neutralizeFormula(row.source_file),
+      neutralizeFormula(row.supplier),
+      neutralizeFormula(row.invoice_number),
+      neutralizeFormula(row.date),
       formatMoneyPlain(row.subtotal),
       formatMoneyPlain(row.vat_amount),
       formatMoneyPlain(row.total),
     ];
-    if (showCurrencyColumn) values.push(row.currency);
+    if (showCurrencyColumn) values.push(neutralizeFormula(row.currency));
     values.push(check.verified ? 'OK' : 'Da verificare');
     if (showSuggestionColumn) {
       values.push(check.verified ? '' : computeMathSuggestion(row, rowCurrency));
@@ -455,6 +457,21 @@ function formatMoneyPlain(value) {
   return num === null ? '' : num.toFixed(2);
 }
 
+// CSV injection: un campo di TESTO (fornitore, n. fattura, nome file...)
+// che inizia con = + - @ (anche dopo spazi/caratteri di controllo) o con
+// TAB/CR può essere eseguito come formula da Excel/LibreOffice. Il solo
+// quoting NON basta: "=1+1" tra virgolette resta una formula. Prefisso
+// con apostrofo, PRIMA dell'escaping CSV. Da applicare solo a celle di
+// testo: i valori numerici contabili (es. -123.45) non passano da qui.
+const FORMULA_LEAD = /^[\u0000-\u0020\u00a0\u200b\ufeff]*[=+\-@]/;
+const CONTROL_LEAD = /^[\t\r\n]/;
+
+function neutralizeFormula(value) {
+  if (value === null || value === undefined) return value;
+  const str = String(value);
+  return FORMULA_LEAD.test(str) || CONTROL_LEAD.test(str) ? `'${str}` : str;
+}
+
 function csvEscape(value) {
   if (value === null || value === undefined) return '';
   const str = String(value);
@@ -464,4 +481,4 @@ function csvEscape(value) {
   return str;
 }
 
-module.exports = { generateExcelBuffer, generateCsv };
+module.exports = { generateExcelBuffer, generateCsv, neutralizeFormula };
