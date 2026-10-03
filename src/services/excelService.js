@@ -16,6 +16,14 @@ const THIN_BORDER = {
 
 const CURRENCY_SYMBOLS = { EUR: '€', USD: '$', GBP: '£' };
 
+// Il punto e virgola è il separatore di lista standard nelle impostazioni
+// regionali italiane (e di gran parte dell'Europa continentale) di Excel:
+// aprendo il CSV con un doppio click, Excel usa il separatore di elenco di
+// sistema per dividere le colonne, non necessariamente la virgola. I nostri
+// valori non contengono mai punto e virgola, quindi non c'è rischio di
+// ambiguità nell'escaping.
+const CSV_DELIMITER = ';';
+
 function toNumberOrNull(value) {
   if (value === null || value === undefined || value === '') return null;
   const num = Number(value);
@@ -32,20 +40,20 @@ function currencyNumFmt(currencyCode) {
 
 function buildColumns(showCurrencyColumn, showSuggestionColumn) {
   const columns = [
-    { header: 'File Origine', key: 'source_file', width: 26 },
-    { header: 'Fornitore', key: 'supplier', width: 28 },
-    { header: 'N. Fattura', key: 'invoice_number', width: 16 },
-    { header: 'Data', key: 'date', width: 13 },
-    { header: 'Imponibile', key: 'subtotal', width: 15 },
-    { header: 'IVA', key: 'vat_amount', width: 13 },
-    { header: 'Totale', key: 'total', width: 15 },
+    { header: 'File Origine', key: 'source_file', width: 30 },
+    { header: 'Fornitore', key: 'supplier', width: 36 },
+    { header: 'N. Fattura', key: 'invoice_number', width: 21 },
+    { header: 'Data', key: 'date', width: 15 },
+    { header: 'Imponibile', key: 'subtotal', width: 17 },
+    { header: 'IVA', key: 'vat_amount', width: 15 },
+    { header: 'Totale', key: 'total', width: 17 },
   ];
   if (showCurrencyColumn) {
-    columns.push({ header: 'Valuta', key: 'currency', width: 10 });
+    columns.push({ header: 'Valuta', key: 'currency', width: 12 });
   }
-  columns.push({ header: 'Verifica Matematica', key: 'verification', width: 20 });
+  columns.push({ header: 'Verifica Matematica', key: 'verification', width: 22 });
   if (showSuggestionColumn) {
-    columns.push({ header: 'Suggerimento (da verificare)', key: 'suggestion', width: 46 });
+    columns.push({ header: 'Suggerimento (da verificare)', key: 'suggestion', width: 50 });
   }
   return columns;
 }
@@ -97,8 +105,8 @@ function applyBorderToRow(row, columnCount) {
  */
 function addGuideSheet(workbook) {
   const guide = workbook.addWorksheet('Guida rapida');
-  guide.getColumn(1).width = 26;
-  guide.getColumn(2).width = 80;
+  guide.getColumn(1).width = 30;
+  guide.getColumn(2).width = 104;
 
   let r = 1;
 
@@ -114,7 +122,7 @@ function addGuideSheet(workbook) {
   guide.getCell(r, 1).value =
     'Ogni riga del foglio "Fatture Estratte" corrisponde a un documento (fattura o ricevuta) che hai caricato. I dati sono stati letti automaticamente da un\'intelligenza artificiale: controlla sempre i valori prima di usarli per la contabilità.';
   guide.getCell(r, 1).alignment = { wrapText: true, vertical: 'top' };
-  guide.getRow(r).height = 40;
+  guide.getRow(r).height = 42;
   r += 2;
 
   guide.getCell(r, 1).value = 'Significato delle colonne';
@@ -135,8 +143,10 @@ function addGuideSheet(workbook) {
   columnExplanations.forEach(([col, desc]) => {
     guide.getCell(r, 1).value = col;
     guide.getCell(r, 1).font = { bold: true };
+    guide.getCell(r, 1).alignment = { vertical: 'middle' };
     guide.getCell(r, 2).value = desc;
-    guide.getCell(r, 2).alignment = { wrapText: true, vertical: 'top' };
+    guide.getCell(r, 2).alignment = { wrapText: true, vertical: 'middle' };
+    guide.getRow(r).height = 20;
     r += 1;
   });
   r += 1;
@@ -148,21 +158,27 @@ function addGuideSheet(workbook) {
   guide.getCell(r, 1).value =
     'La colonna "Verifica Matematica" controlla automaticamente se Imponibile + IVA = Totale (con una piccola tolleranza per gli arrotondamenti).';
   guide.getCell(r, 1).alignment = { wrapText: true, vertical: 'top' };
-  guide.getRow(r).height = 30;
+  guide.getRow(r).height = 32;
   r += 1;
 
   guide.getCell(r, 1).value = '✓ OK';
   guide.getCell(r, 1).font = OK_FONT;
+  guide.getCell(r, 1).alignment = { vertical: 'middle' };
   guide.getCell(r, 2).value = 'I tre importi tornano: puoi fidarti dei dati estratti.';
-  guide.getCell(r, 2).alignment = { wrapText: true };
+  guide.getCell(r, 2).alignment = { wrapText: true, vertical: 'middle' };
+  guide.getRow(r).height = 22;
   r += 1;
 
+  // Riga esplicitamente segnalata in una verifica precedente come a rischio
+  // di troncamento: altezza aumentata e colonna B allargata per garantire
+  // che l'intero testo resti visibile senza tagli.
   guide.getCell(r, 1).value = '⚠ Da verificare';
   guide.getCell(r, 1).font = WARNING_FONT;
+  guide.getCell(r, 1).alignment = { vertical: 'top' };
   guide.getCell(r, 2).value =
     "Imponibile + IVA non corrisponde al Totale: probabilmente l'IA ha letto male un numero, o il documento ha un calcolo particolare. Controlla il documento originale e correggi i valori.";
   guide.getCell(r, 2).alignment = { wrapText: true, vertical: 'top' };
-  guide.getRow(r).height = 40;
+  guide.getRow(r).height = 48;
   r += 2;
 
   guide.getCell(r, 1).value = 'Colonna "Suggerimento"';
@@ -172,7 +188,7 @@ function addGuideSheet(workbook) {
   guide.getCell(r, 1).value =
     'Per le righe "Da verificare" (se presenti), trovi anche una colonna "Suggerimento" con un\'IPOTESI di quale valore renderebbe corretto il calcolo (Imponibile + IVA = Totale). È solo un\'idea su cosa controllare: NON è mai una correzione applicata automaticamente. Verifica sempre sul documento originale prima di cambiare qualsiasi importo.';
   guide.getCell(r, 1).alignment = { wrapText: true, vertical: 'top' };
-  guide.getRow(r).height = 55;
+  guide.getRow(r).height = 60;
   r += 2;
 
   guide.getCell(r, 1).value = 'Perché alcune righe sono gialle';
@@ -182,7 +198,7 @@ function addGuideSheet(workbook) {
   guide.getCell(r, 1).value =
     'Nel foglio "Fatture Estratte", le righe con una discrepanza matematica (stato "Da verificare") sono evidenziate con uno sfondo giallo, come in questo esempio, per farle notare subito a colpo d\'occhio:';
   guide.getCell(r, 1).alignment = { wrapText: true, vertical: 'top' };
-  guide.getRow(r).height = 30;
+  guide.getRow(r).height = 34;
   r += 1;
 
   // Esempio visivo di riga gialla
@@ -191,7 +207,9 @@ function addGuideSheet(workbook) {
   [1, 2].forEach((c) => {
     guide.getCell(r, c).fill = WARNING_FILL;
     guide.getCell(r, c).border = THIN_BORDER;
+    guide.getCell(r, c).alignment = { vertical: 'middle', wrapText: true };
   });
+  guide.getRow(r).height = 22;
   r += 2;
 
   guide.mergeCells(r, 1, r, 2);
@@ -322,13 +340,26 @@ async function generateExcelBuffer(rows) {
 
     const excelRow = sheet.addRow(rowValues);
 
+    // Più respiro verticale: righe normali leggermente più alte del default,
+    // righe con un suggerimento (testo lungo su più righe) ancora più alte.
+    const hasSuggestionText = showSuggestionColumn && !!rowValues.suggestion;
+    excelRow.height = hasSuggestionText ? 58 : 22;
+
     const rowMoneyFmt = currencyNumFmt(rowCurrency);
     ['subtotal', 'vat_amount', 'total'].forEach((key) => {
       excelRow.getCell(key).numFmt = rowMoneyFmt;
     });
 
+    // Allineamento verticale "middle" su tutte le celle (il testo non deve
+    // toccare i bordi della cella), tranne la colonna Suggerimento che
+    // resta ancorata in alto essendo un paragrafo eventualmente su più righe.
+    columns.forEach((col) => {
+      const cell = excelRow.getCell(col.key);
+      cell.alignment = col.key === 'suggestion'
+        ? { wrapText: true, vertical: 'top' }
+        : { vertical: 'middle' };
+    });
     if (showSuggestionColumn) {
-      excelRow.getCell('suggestion').alignment = { wrapText: true, vertical: 'top' };
       excelRow.getCell('suggestion').font = { italic: true, color: { argb: 'FF64748B' } };
     }
 
@@ -385,9 +416,13 @@ function generateCsv(rows) {
   const commentLine =
     `# Dati contabili estratti automaticamente da fatture/ricevute. ${currencyNote} ` +
     'La colonna "Verifica Matematica" indica "OK" se Imponibile + IVA = Totale, oppure "Da verificare" in caso di discrepanza da controllare manualmente.' +
-    suggestionNote;
+    suggestionNote +
+    ' Suggerimento: se il testo appare tagliato, seleziona tutte le colonne e fai doppio click sul bordo di una qualsiasi intestazione di colonna (o usa Formato > Larghezza colonna > Adatta automaticamente) per allargarle automaticamente.';
 
-  const lines = [commentLine, headers.join(',')];
+  // Riga vuota tra il commento esplicativo e l'intestazione della tabella,
+  // per distinguerle visivamente quando il file viene aperto in un editor
+  // di testo semplice o in Excel/WPS.
+  const lines = [commentLine, '', headers.join(CSV_DELIMITER)];
 
   rows.forEach((row) => {
     const check = verifyInvoiceMath(row);
@@ -397,9 +432,9 @@ function generateCsv(rows) {
       row.supplier,
       row.invoice_number,
       row.date,
-      toNumberOrNull(row.subtotal),
-      toNumberOrNull(row.vat_amount),
-      toNumberOrNull(row.total),
+      formatMoneyPlain(row.subtotal),
+      formatMoneyPlain(row.vat_amount),
+      formatMoneyPlain(row.total),
     ];
     if (showCurrencyColumn) values.push(row.currency);
     values.push(check.verified ? 'OK' : 'Da verificare');
@@ -407,16 +442,23 @@ function generateCsv(rows) {
       values.push(check.verified ? '' : computeMathSuggestion(row, rowCurrency));
     }
 
-    lines.push(values.map(csvEscape).join(','));
+    lines.push(values.map(csvEscape).join(CSV_DELIMITER));
   });
 
   return lines.join('\r\n');
 }
 
+// Formatta un importo sempre con 2 cifre decimali (es. "100.00", mai "100"),
+// per coerenza visiva nel CSV. Stringa vuota se il valore non è un numero.
+function formatMoneyPlain(value) {
+  const num = toNumberOrNull(value);
+  return num === null ? '' : num.toFixed(2);
+}
+
 function csvEscape(value) {
   if (value === null || value === undefined) return '';
   const str = String(value);
-  if (/[",\r\n]/.test(str)) {
+  if (new RegExp(`["${CSV_DELIMITER}\r\n]`).test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
