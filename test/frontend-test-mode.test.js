@@ -175,6 +175,25 @@ async function main() {
     // The test passes by reaching this point.
   });
 
+  // T11: CTA button component keeps its rounded shape (regression guard for
+  // the "btn-primary lost border-radius/padding" bug: .btn-primary/.btn-
+  // secondary must chain @apply btn so they inherit rounded-2xl + padding,
+  // not just color/shadow).
+  await test('T11: .btn-primary and .btn-secondary compiled CSS include a rounded border-radius', async () => {
+    const css = fs.readFileSync(path.join(PROJECT_ROOT, 'public', 'dist', 'styles.css'), 'utf8');
+    const extractRule = (selector) => {
+      const idx = css.indexOf(selector + ' {');
+      if (idx === -1) throw new Error(`${selector} rule not found in compiled CSS`);
+      const end = css.indexOf('}', idx);
+      return css.slice(idx, end);
+    };
+    const primary = extractRule('.btn-primary');
+    const secondary = extractRule('.btn-secondary');
+    if (!/border-radius:\s*\S/.test(primary)) throw new Error('.btn-primary missing border-radius (rounded corners regressed)');
+    if (!/border-radius:\s*\S/.test(secondary)) throw new Error('.btn-secondary missing border-radius (rounded corners regressed)');
+    if (!/padding-left:/.test(primary)) throw new Error('.btn-primary missing padding (base .btn not inherited)');
+  });
+
   console.log('\n=== Summary ===');
   console.log('PASS: ' + pass);
   console.log('FAIL: ' + fail);

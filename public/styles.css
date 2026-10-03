@@ -4,32 +4,19 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center rounded-2xl px-5 py-2.5 font-semibold text-sm transition-all duration-200 ease-out;
-    gap: 0.5rem;
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-2.5 font-semibold text-sm transition-all duration-200 ease-out;
   }
   .btn-primary {
-    @apply bg-gradient-to-br from-brand-600 to-brand-500 text-white shadow-card hover:shadow-brand hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none disabled:shadow-none disabled:translate-y-0;
-  }
-  .btn-primary-base {
-    @apply btn btn-primary;
+    @apply btn bg-gradient-to-br from-brand-600 to-brand-500 text-white shadow-card hover:shadow-brand hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none disabled:shadow-none disabled:translate-y-0;
   }
   .btn-accent {
-    @apply bg-gradient-to-br from-brand-700 to-brand-600 text-white shadow-card hover:shadow-brand hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none;
-  }
-  .btn-accent-base {
-    @apply btn btn-accent;
+    @apply btn bg-gradient-to-br from-brand-700 to-brand-600 text-white shadow-card hover:shadow-brand hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none;
   }
   .btn-secondary {
-    @apply bg-white border border-ink-200 text-ink-800 hover:border-brand-300 hover:bg-brand-50 hover:-translate-y-0.5 active:translate-y-0 dark:bg-ink-900 dark:border-ink-700 dark:text-ink-100 dark:hover:border-brand-500 dark:hover:bg-brand-950/40;
-  }
-  .btn-secondary-base {
-    @apply btn btn-secondary;
+    @apply btn bg-white border border-ink-200 text-ink-800 hover:border-brand-300 hover:bg-brand-50 hover:-translate-y-0.5 active:translate-y-0 dark:bg-ink-900 dark:border-ink-700 dark:text-ink-100 dark:hover:border-brand-500 dark:hover:bg-brand-950/40;
   }
   .btn-dark {
-    @apply bg-ink-900 text-white hover:bg-ink-800 hover:-translate-y-0.5 active:translate-y-0 shadow-card dark:bg-ink-100 dark:text-ink-900 dark:hover:bg-white;
-  }
-  .btn-dark-base {
-    @apply btn btn-dark;
+    @apply btn bg-ink-900 text-white hover:bg-ink-800 hover:-translate-y-0.5 active:translate-y-0 shadow-card dark:bg-ink-100 dark:text-ink-900 dark:hover:bg-white;
   }
   .card {
     @apply bg-white border border-ink-100 rounded-3xl shadow-card dark:bg-ink-900 dark:border-ink-800;
