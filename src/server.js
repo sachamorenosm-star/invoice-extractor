@@ -17,6 +17,25 @@ const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { getTestDailyLimit } = require('./services/stripeService');
 
 const app = express();
+
+// Proxy fidati: su Render il servizio è raggiungibile SOLO tramite il suo
+// load balancer (un solo hop), che termina TLS e inoltra a Express. Senza
+// questa impostazione req.ip è l'indirizzo del proxy: tutti i visitatori
+// condividerebbero lo stesso bucket dei rate limiter. Con "1" Express usa
+// l'ultimo valore di X-Forwarded-For (quello aggiunto dall'hop fidato) e
+// ignora le voci precedenti, che il client può falsificare. Mai "true"
+// (si fiderebbe della voce più a sinistra, controllata dall'attaccante).
+// TRUST_PROXY_HOPS=0 disattiva (es. server esposto direttamente).
+// Va impostato PRIMA di ogni middleware che legge req.ip / req.protocol.
+function parseTrustProxyHops(raw) {
+  if (raw === undefined || String(raw).trim() === '') return 1;
+  const n = Number(raw);
+  if (Number.isInteger(n) && n >= 0 && n <= 5) return n;
+  console.warn('[server] TRUST_PROXY_HOPS non valido (atteso intero 0-5): uso il default 1.');
+  return 1;
+}
+app.set('trust proxy', parseTrustProxyHops(process.env.TRUST_PROXY_HOPS));
+
 const PORT = process.env.PORT || 3000;
 const FRONTEND_URL = process.env.FRONTEND_URL || `http://localhost:${PORT}`;
 
