@@ -42,6 +42,19 @@ const FRONTEND_URL = process.env.FRONTEND_URL || `http://localhost:${PORT}`;
 // ---------------------------------------------------------------------
 // Sicurezza baseline
 // ---------------------------------------------------------------------
+// Helmet aggiunge "upgrade-insecure-requests" di default (anche se non
+// elencata qui sotto: viene unita dai default di Helmet). Questa direttiva
+// istruisce il browser a riscrivere in HTTPS qualunque sottorisorsa relativa
+// (es. /dist/styles.css, /assets/logo.svg) PRIMA di richiederla — anche
+// quando la pagina stessa è servita in HTTP semplice. In sviluppo locale
+// (anche via LAN, es. http://192.168.x.x:3000) il server Node non espone
+// TLS sulla stessa porta: il browser tenta quindi https://<host>:3000/... e
+// fallisce (nessun listener TLS), lasciando pagina priva di CSS/immagini
+// senza errori visibili all'utente. In produzione su Render il traffico
+// pubblico è servito in HTTPS dal load balancer, quindi la direttiva va
+// mantenuta lì. Impostare la chiave a null (anziché omettendola) è il modo
+// supportato da Helmet per escluderla esplicitamente dai default uniti.
+const isProduction = process.env.NODE_ENV === 'production';
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -52,6 +65,10 @@ app.use(helmet({
       imgSrc: ["'self'", 'data:'],
       connectSrc: ["'self'", 'https://api.stripe.com'],
       frameSrc: ['https://js.stripe.com', 'https://checkout.stripe.com'],
+      // La chiave va omessa (produzione, default Helmet attivo) oppure
+      // impostata esplicitamente a null (sviluppo, direttiva esclusa):
+      // passare "undefined" qui farebbe fallire Helmet con un errore.
+      ...(isProduction ? {} : { upgradeInsecureRequests: null }),
     },
   },
 }));
