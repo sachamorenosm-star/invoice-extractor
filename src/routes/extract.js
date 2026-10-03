@@ -1,4 +1,5 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const { upload } = require('../middleware/upload');
 const { identifyUser, enforceScanLimit } = require('../middleware/auth');
 const { extractInvoiceData } = require('../services/claudeService');
@@ -7,6 +8,27 @@ const { getPlanStatus, recordScans } = require('../services/stripeService');
 const { countTotalPages } = require('../utils/pageCounter');
 
 const router = express.Router();
+
+// Rate limiting specifico per /api/extract: max 3 richieste per minuto.
+// Per utenti autenticati, usa userId come chiave. Per anonimi, usa IP.
+// Questo protegge dalla velocità di abuso (spam requests) e dai costi API.
+const extractLimiter = rateLimit({
+  windowMs: 60 * 1000,           // 1 minuto
+  max: 3,                        // massimo 3 richieste per finestra
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Se l'utente è autenticato (session o X-User-Id valido), usa lo userId
+    // come chiave stabile, così il limite è per utente, non per IP.
+    // Per utenti anonimo, fallback a IP address.
+    if (req.userId) {
+      return `user:${req.userId}`;
+    }
+    // req.ip è fornito da Express e compatibile con IPv4/IPv6
+    return `ip:${req.ip}`;
+  },
+  message: { error: 'Troppe richieste di estrazione. Attendi un minuto prima di caricare altri file.' },
+});
 
 // Conta le pagine REALI dei file caricati (un PDF multipagina vale N
 // pagine, un'immagine vale sempre 1) PRIMA di chiamare l'API Claude, così
@@ -21,6 +43,7 @@ async function countRequestPages(req) {
 router.post(
   '/',
   identifyUser,
+  extractLimiter,
   upload.array('invoices'),
   enforceScanLimit(countRequestPages),
   async (req, res, next) => {
@@ -33,24 +56,39 @@ router.post(
       const totalPages = req.scanCount;
 
       // Elaborazione in parallelo: ogni file è un Buffer in RAM, inviato a
-      // Claude e mai scritto su disco (GDPR zero-retention).
-      const results = await Promise.all(
+      // Claude e mai scritto su disco (GDPR zero-retention). Un singolo file
+      // può contenere PIÙ fatture/ricevute distinte (es. una scansione
+      // cumulativa multipagina): extractInvoiceData restituisce un oggetto
+      // { records, truncated, extractedCount } per ciascun file, che qui
+      // appiattiamo in un'unica lista di risultati e aggreghiamo per
+      // segnalare un'eventuale estrazione incompleta (troncamento IA).
+      const resultsPerFile = await Promise.all(
         req.files.map(async (file) => {
           try {
-            const extracted = await extractInvoiceData(file.buffer, file.mimetype, file.originalname);
-            return applyIndependentVerification(extracted);
+            const extraction = await extractInvoiceData(file.buffer, file.mimetype, file.originalname);
+            return {
+              filename: file.originalname,
+              records: extraction.records.map((extracted) => applyIndependentVerification(extracted)),
+              truncated: extraction.truncated,
+              extractedCount: extraction.extractedCount,
+            };
           } catch (err) {
             return {
-              source_file: file.originalname,
-              supplier: '',
-              invoice_number: '',
-              date: '',
-              subtotal: null,
-              vat_amount: null,
-              total: null,
-              currency: '',
-              math_verified: false,
-              error: err.message || 'Errore di estrazione.',
+              filename: file.originalname,
+              records: [{
+                source_file: file.originalname,
+                supplier: '',
+                invoice_number: '',
+                date: '',
+                subtotal: null,
+                vat_amount: null,
+                total: null,
+                currency: '',
+                math_verified: false,
+                error: err.message || 'Errore di estrazione.',
+              }],
+              truncated: false,
+              extractedCount: 0,
             };
           }
           // Nota: il buffer del file (`file.buffer`) esce di scope al termine
@@ -58,14 +96,34 @@ router.post(
           // garbage collector subito dopo l'invio ad Anthropic.
         }),
       );
+      const results = resultsPerFile.flatMap((r) => r.records);
+      const truncatedFiles = resultsPerFile.filter((r) => r.truncated);
 
+      // Il conteggio pagine (e quindi il consumo di quota) resta invariato:
+      // si basa sulle pagine REALI del PDF (totalPages), non sul numero di
+      // fatture riconosciute al suo interno.
       recordScans(userId, totalPages);
 
-      res.json({
+      const responseBody = {
         results,
         plan: getPlanStatus(userId),
         pagesProcessed: totalPages,
-      });
+      };
+
+      // Segnaliamo esplicitamente un'estrazione incompleta (mai in
+      // silenzio): il frontend mostra un banner persistente, non un toast.
+      if (truncatedFiles.length > 0) {
+        responseBody.incomplete = true;
+        responseBody.incompleteMessage = truncatedFiles.length === 1
+          ? `Estrazione incompleta: elaborati ${truncatedFiles[0].extractedCount} documenti dal file "${truncatedFiles[0].filename}", che potrebbe contenerne di più. Prova a caricare il file in gruppi più piccoli.`
+          : `Estrazione incompleta per ${truncatedFiles.length} file: alcuni documenti potrebbero non essere stati estratti. Prova a caricare i file in gruppi più piccoli.`;
+        responseBody.truncatedFiles = truncatedFiles.map((r) => ({
+          filename: r.filename,
+          extractedCount: r.extractedCount,
+        }));
+      }
+
+      res.json(responseBody);
     } catch (err) {
       next(err);
     }
