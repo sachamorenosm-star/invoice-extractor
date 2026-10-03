@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "build:css": "node build-css.js"
   },
   "license": "UNLICENSED",
   "private": true,
@@ -28,6 +29,9 @@
     "uuid": "^11.0.3"
   },
   "devDependencies": {
-    "nodemon": "^3.1.7"
+    "autoprefixer": "^10.6.1",
+    "nodemon": "^3.1.7",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^3.4.19"
   }
 }

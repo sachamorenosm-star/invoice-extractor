@@ -234,6 +234,25 @@
   });
   els.fileInput.addEventListener('change', () => addFiles(els.fileInput.files));
 
+  // Mobile upload buttons
+  document.getElementById('btn-file-input')?.addEventListener('click', () => {
+    els.fileInput.click();
+  });
+  document.getElementById('btn-camera')?.addEventListener('click', () => {
+    document.getElementById('camera-input')?.click();
+  });
+  document.getElementById('btn-gallery')?.addEventListener('click', () => {
+    document.getElementById('gallery-input')?.click();
+  });
+
+  // Wire hidden inputs to addFiles
+  document.getElementById('camera-input')?.addEventListener('change', (e) => {
+    addFiles(e.target.files);
+  });
+  document.getElementById('gallery-input')?.addEventListener('change', (e) => {
+    addFiles(e.target.files);
+  });
+
   // ---------------------------------------------------------------
   // Incolla da appunti (Ctrl+V / Cmd+V)
   //
