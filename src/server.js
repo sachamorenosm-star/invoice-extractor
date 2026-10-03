@@ -14,6 +14,7 @@ const authRoutes = require('./routes/auth');
 const waitlistRoutes = require('./routes/waitlist');
 const feedbackRoutes = require('./routes/feedback');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+const { getTestDailyLimit } = require('./services/stripeService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -74,6 +75,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // Config pubblica (non sensibile) per il frontend
 // ---------------------------------------------------------------------
 app.get('/api/config', (req, res) => {
+  const testMode = process.env.TEST_MODE === 'true';
   res.json({
     maxFileSizeMb: parseInt(process.env.MAX_FILE_SIZE_MB, 10) || 10,
     maxFilesPerRequest: parseInt(process.env.MAX_FILES_PER_REQUEST, 10) || 10,
@@ -82,6 +84,9 @@ app.get('/api/config', (req, res) => {
     // pagamento raccolgono l'interesse invece di avviare un vero checkout.
     // "live": comportamento normale, checkout Stripe reale.
     launchMode: process.env.LAUNCH_MODE === 'live' ? 'live' : 'waitlist',
+    // TEST_MODE beta configuration
+    testMode,
+    testDailyLimit: testMode ? getTestDailyLimit() : null,
   });
 });
 

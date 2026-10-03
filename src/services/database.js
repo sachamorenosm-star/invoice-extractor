@@ -116,6 +116,20 @@ db.exec(`
   );
 `);
 
+// ---------------------------------------------------------------
+// TEST_MODE beta usage tracking: per-user daily page quota.
+// Completely separate from monthly paid plan accounting.
+// ---------------------------------------------------------------
+db.exec(`
+  CREATE TABLE IF NOT EXISTS test_usage (
+    user_id TEXT NOT NULL,
+    date_key TEXT NOT NULL,
+    pages_used INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, date_key)
+  );
+`);
+
 const statements = {
   getUser: db.prepare('SELECT * FROM users WHERE user_id = ?'),
   getUserByCustomerId: db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?'),
@@ -150,6 +164,21 @@ const statements = {
   insertFeedbackSignal: db.prepare(`
     INSERT INTO feedback_signals (usefulness_rating, would_pay, optional_email, created_at)
     VALUES (@usefulness_rating, @would_pay, @optional_email, @created_at)
+  `),
+  getTestUsage: db.prepare('SELECT pages_used FROM test_usage WHERE user_id = ? AND date_key = ?'),
+  upsertTestUsage: db.prepare(`
+    INSERT INTO test_usage (user_id, date_key, pages_used, created_at)
+    VALUES (@user_id, @date_key, @pages_used, @created_at)
+    ON CONFLICT(user_id, date_key) DO UPDATE SET
+      pages_used = pages_used + @pages_used
+  `),
+  setTestUsagePages: db.prepare(`
+    UPDATE test_usage SET pages_used = @pages_used
+    WHERE user_id = @user_id AND date_key = @date_key
+  `),
+  insertTestUsageIfNotExists: db.prepare(`
+    INSERT OR IGNORE INTO test_usage (user_id, date_key, pages_used, created_at)
+    VALUES (@user_id, @date_key, 0, @created_at)
   `),
 };
 
@@ -204,6 +233,48 @@ function insertFeedbackSignal({ usefulness_rating: usefulnessRating, would_pay: 
   });
 }
 
+// TEST_MODE beta usage tracking (separate from monthly paid accounting)
+function getTestUsage(userId, dateKey) {
+  const row = statements.getTestUsage.get(userId, dateKey);
+  return row ? row.pages_used : 0;
+}
+
+function atomicReserveTestUsage(userId, dateKey, count, limit) {
+  const transaction = db.transaction(() => {
+    statements.insertTestUsageIfNotExists.run({ user_id: userId, date_key: dateKey, created_at: Date.now() });
+    const current = statements.getTestUsage.get(userId, dateKey);
+    const used = current ? current.pages_used : 0;
+
+    // Atomic check: if adding count would exceed limit, reject reservation
+    if (used + count > limit) {
+      return { success: false, used };
+    }
+
+    // Atomic increment: reserve the pages
+    statements.upsertTestUsage.run({ user_id: userId, date_key: dateKey, pages_used: count, created_at: Date.now() });
+
+    return { success: true, used: used + count };
+  });
+
+  return transaction();
+}
+
+function incrementTestUsage(userId, dateKey, count) {
+  const current = statements.getTestUsage.get(userId, dateKey);
+  if (!current) {
+    statements.insertTestUsageIfNotExists.run({ user_id: userId, date_key: dateKey, created_at: Date.now() });
+  }
+  statements.upsertTestUsage.run({ user_id: userId, date_key: dateKey, pages_used: count, created_at: Date.now() });
+}
+
+function decrementTestUsage(userId, dateKey, count) {
+  const current = statements.getTestUsage.get(userId, dateKey);
+  if (!current) return;  // Nothing to decrement
+
+  const newValue = Math.max(0, current.pages_used - count);
+  statements.setTestUsagePages.run({ user_id: userId, date_key: dateKey, pages_used: newValue });
+}
+
 module.exports = {
   db,
   getUser,
@@ -217,4 +288,8 @@ module.exports = {
   markLoginTokenUsed,
   insertWaitlistSignup,
   insertFeedbackSignal,
+  getTestUsage,
+  atomicReserveTestUsage,
+  incrementTestUsage,
+  decrementTestUsage,
 };

@@ -57,6 +57,62 @@ function currentPeriodKey() {
   return `${now.getFullYear()}-${now.getMonth()}`;
 }
 
+// TEST_MODE beta configuration
+function getTestDailyLimit() {
+  const raw = process.env.TEST_DAILY_EXTRACTION_LIMIT;
+
+  if (!raw) {
+    console.warn('[test-mode] TEST_DAILY_EXTRACTION_LIMIT not set, defaulting to 50');
+    return 50;
+  }
+
+  const parsed = parseInt(raw, 10);
+
+  if (isNaN(parsed)) {
+    console.error(`[test-mode] TEST_DAILY_EXTRACTION_LIMIT="${raw}" is not a valid integer, defaulting to 50`);
+    return 50;
+  }
+
+  if (parsed <= 0) {
+    console.warn(`[test-mode] TEST_DAILY_EXTRACTION_LIMIT=${parsed} ≤ 0, beta extraction disabled`);
+  }
+
+  return parsed;
+}
+
+function getTodayKey() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function canScanTestMode(userId, count = 1) {
+  const limit = getTestDailyLimit();
+  if (limit <= 0) return false;
+
+  const dateKey = getTodayKey();
+  const used = database.getTestUsage(userId, dateKey);
+
+  return used + count <= limit;
+}
+
+function getTestDailyStatus(userId) {
+  const limit = getTestDailyLimit();
+  const dateKey = getTodayKey();
+  const used = database.getTestUsage(userId, dateKey);
+
+  // Calculate next UTC midnight
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  tomorrow.setUTCHours(0, 0, 0, 0);
+  const resetAt = tomorrow.toISOString();
+
+  return {
+    limit,
+    used,
+    resetAt,
+  };
+}
+
 function rowToUser(row) {
   return {
     tier: row.tier,
@@ -124,14 +180,43 @@ function getPlanStatus(userId) {
 }
 
 function canScan(userId, count = 1) {
+  // TEST_MODE: use daily beta quota instead of monthly plan
+  if (process.env.TEST_MODE === 'true') {
+    return canScanTestMode(userId, count);
+  }
+
+  // Normal: check monthly paid plan
   const { used, limit } = getPlanStatus(userId);
   return used + count <= limit;
 }
 
 function recordScans(userId, count = 1) {
+  // TEST_MODE: record to test_usage, NOT to monthly paid scans_used
+  if (process.env.TEST_MODE === 'true') {
+    const dateKey = getTodayKey();
+    database.incrementTestUsage(userId, dateKey, count);
+    return;
+  }
+
+  // Normal: record to monthly paid scans_used
   const user = getOrCreateUser(userId);
   user.scansUsed += count;
   persistUser(userId, user);
+}
+
+function reserveTestDailyQuota(userId, count = 1) {
+  const limit = getTestDailyLimit();
+  if (limit <= 0) return false;
+
+  const dateKey = getTodayKey();
+  const result = database.atomicReserveTestUsage(userId, dateKey, count, limit);
+
+  return result.success;
+}
+
+function releaseTestDailyQuota(userId, count = 1) {
+  const dateKey = getTodayKey();
+  database.decrementTestUsage(userId, dateKey, count);
 }
 
 function activateSubscription(userId, stripeCustomerId, stripeSubscriptionId, tier) {
@@ -305,4 +390,8 @@ module.exports = {
   createPortalSession,
   constructWebhookEvent,
   handleWebhookEvent,
+  getTestDailyLimit,
+  getTestDailyStatus,
+  reserveTestDailyQuota,
+  releaseTestDailyQuota,
 };

@@ -1,4 +1,4 @@
-const { canScan, getPlanStatus } = require('../services/stripeService');
+const { canScan, getPlanStatus, getTestDailyStatus } = require('../services/stripeService');
 const authService = require('../services/authService');
 
 const USER_ID_PATTERN = /^usr_[a-zA-Z0-9-]{8,64}$/;
@@ -14,14 +14,17 @@ function identifyUser(req, res, next) {
   if (session?.userId) {
     req.userId = session.userId;
     req.userEmail = session.email;
+    req.isAuthenticated = true;
     return next();
   }
 
   const headerId = req.get('X-User-Id');
   if (headerId && USER_ID_PATTERN.test(headerId)) {
     req.userId = headerId;
+    req.isAuthenticated = false;
   } else {
     req.userId = null;
+    req.isAuthenticated = false;
   }
   next();
 }
@@ -43,6 +46,19 @@ function enforceScanLimit(countFn = 1) {
       req.scanCount = count;
 
       if (!canScan(userId, count)) {
+        // TEST_MODE uses different response format
+        if (process.env.TEST_MODE === 'true') {
+          const { limit, used, resetAt } = getTestDailyStatus(userId);
+          return res.status(429).json({
+            error: 'Limite di estrazione di test raggiunto. Riprova domani.',
+            code: 'TEST_DAILY_LIMIT_REACHED',
+            limit,
+            used,
+            resetAt,
+          });
+        }
+
+        // Normal plan-based response
         const plan = getPlanStatus(userId);
         const remaining = Math.max(plan.limit - plan.used, 0);
         const limitDescription = plan.tier === 'studio'

@@ -4,10 +4,21 @@ const { upload } = require('../middleware/upload');
 const { identifyUser, enforceScanLimit } = require('../middleware/auth');
 const { extractInvoiceData } = require('../services/claudeService');
 const { applyIndependentVerification } = require('../utils/mathVerifier');
-const { getPlanStatus, recordScans } = require('../services/stripeService');
+const { getPlanStatus, recordScans, getTestDailyStatus } = require('../services/stripeService');
 const { countTotalPages } = require('../utils/pageCounter');
 
 const router = express.Router();
+
+// TEST_MODE: require authenticated users (magic-link session), reject anonymous X-User-Id
+function requireAuthIfTestMode(req, res, next) {
+  if (process.env.TEST_MODE === 'true' && !req.isAuthenticated) {
+    return res.status(401).json({
+      error: 'Accedi per utilizzare la versione di test.',
+      code: 'TEST_MODE_AUTH_REQUIRED',
+    });
+  }
+  next();
+}
 
 // Rate limiting specifico per /api/extract: max 3 richieste per minuto.
 // Per utenti autenticati, usa userId come chiave. Per anonimi, usa IP.
@@ -43,6 +54,7 @@ async function countRequestPages(req) {
 router.post(
   '/',
   identifyUser,
+  requireAuthIfTestMode,
   extractLimiter,
   upload.array('invoices'),
   enforceScanLimit(countRequestPages),
