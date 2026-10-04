@@ -97,14 +97,17 @@ async function main() {
     if (config.testDailyLimit !== 50) throw new Error('testDailyLimit should be 50, got ' + config.testDailyLimit);
   });
 
-  // T3: testMode=true, limit=0 → unavailable message
-  await test('T3: testMode=true, limit=0 → unavailable extraction message', async () => {
+  // T3: zero is invalid beta configuration, rather than a public entitlement.
+  await test('T3: testMode=true rejects zero quota configuration', async () => {
     process.env.TEST_MODE = 'true';
     process.env.TEST_DAILY_EXTRACTION_LIMIT = '0';
+    const assert = require('assert');
+    assert.throws(() => require('../src/utils/config').getTestDailyLimit(), /TEST_DAILY_EXTRACTION_LIMIT/);
+    process.env.TEST_DAILY_EXTRACTION_LIMIT = '50';
     const res = await httpGet(34700, '/api/config');
     const config = JSON.parse(res.body);
     if (config.testMode !== true) throw new Error('testMode should be true');
-    if (config.testDailyLimit !== 0) throw new Error('testDailyLimit should be 0');
+    if (config.testDailyLimit !== 50) throw new Error('testDailyLimit should be 50');
   });
 
   // T4: 401 TEST_MODE_AUTH_REQUIRED error case
@@ -119,17 +122,19 @@ async function main() {
   // T5: 429 TEST_DAILY_LIMIT_REACHED error case
   await test('T5: 429 TEST_DAILY_LIMIT_REACHED → daily-limit-reached UX', async () => {
     process.env.TEST_MODE = 'true';
-    process.env.TEST_DAILY_EXTRACTION_LIMIT = '0';
+    process.env.TEST_DAILY_EXTRACTION_LIMIT = '1';
     // Create a user at the limit, then try to extract
     const db = require(path.join(PROJECT_ROOT, 'src/services/database'));
     const userId = 'usr_testlimit0000-0000-0000-000000000001';
     const dateKey = new Date().toISOString().split('T')[0];
-    db.incrementTestUsage(userId, dateKey, 0); // Create row
+    db.incrementTestUsage(userId, dateKey, 1); // Exhaust a valid positive quota
 
     // Use JWT auth for this user
     const jwt = require('jsonwebtoken');
     const token = jwt.sign({ userId, email: userId + '@test' }, process.env.SESSION_SECRET);
-    const res = await httpPost(34700, '/api/extract', { 'Cookie': 'ie_session=' + token }, '');
+    const boundary = 'FrontendQuotaBoundary';
+    const body = `--${boundary}\r\nContent-Disposition: form-data; name="invoices"; filename="synthetic.jpg"\r\nContent-Type: image/jpeg\r\n\r\nsynthetic-image\r\n--${boundary}--\r\n`;
+    const res = await httpPost(34700, '/api/extract', { 'Cookie': 'ie_session=' + token, 'Content-Type': 'multipart/form-data; boundary=' + boundary }, body);
     if (res.status !== 429) throw new Error('Expected 429, got ' + res.status);
     if (res.body.code !== 'TEST_DAILY_LIMIT_REACHED') throw new Error('Expected TEST_DAILY_LIMIT_REACHED code');
   });

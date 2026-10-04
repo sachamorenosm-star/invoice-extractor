@@ -15,13 +15,21 @@ function getMaxPagesPerFile(raw = process.env.MAX_PAGES_PER_FILE) {
   return Number(raw);
 }
 
-function getTestGlobalDailyLimit(env = process.env) {
-  if (!parseTestMode(env.TEST_MODE)) return null;
-  const raw = env.TEST_GLOBAL_DAILY_EXTRACTION_LIMIT;
+function parseBetaPositiveInteger(raw, key) {
   if (typeof raw !== 'string' || !/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
-    throw new Error('Invalid TEST_GLOBAL_DAILY_EXTRACTION_LIMIT: TEST_MODE requires an explicit positive integer.');
+    throw new Error(`Invalid ${key}: TEST_MODE requires an explicit positive integer.`);
   }
   return Number(raw);
+}
+
+function getTestGlobalDailyLimit(env = process.env) {
+  if (!parseTestMode(env.TEST_MODE)) return null;
+  return parseBetaPositiveInteger(env.TEST_GLOBAL_DAILY_EXTRACTION_LIMIT, 'TEST_GLOBAL_DAILY_EXTRACTION_LIMIT');
+}
+
+function getTestDailyLimit(env = process.env) {
+  if (!parseTestMode(env.TEST_MODE)) return null;
+  return parseBetaPositiveInteger(env.TEST_DAILY_EXTRACTION_LIMIT, 'TEST_DAILY_EXTRACTION_LIMIT');
 }
 
 function startupSummary(env, dailyLimit, uploadLimits) {
@@ -30,6 +38,7 @@ function startupSummary(env, dailyLimit, uploadLimits) {
     NODE_ENV: ['production', 'development', 'test'].includes(env.NODE_ENV) ? env.NODE_ENV : 'unset/other',
     TEST_MODE: parseTestMode(env.TEST_MODE) ? 'enabled' : 'disabled',
     TEST_DAILY_EXTRACTION_LIMIT: dailyLimit,
+    TEST_GLOBAL_DAILY_EXTRACTION_LIMIT: getTestGlobalDailyLimit(env),
     MAX_FILE_SIZE_MB: uploadLimits.MAX_FILE_SIZE_MB,
     MAX_FILES_PER_REQUEST: uploadLimits.MAX_FILES_PER_REQUEST,
     MAX_PAGES_PER_FILE: getMaxPagesPerFile(env.MAX_PAGES_PER_FILE),
@@ -40,4 +49,4 @@ function startupSummary(env, dailyLimit, uploadLimits) {
   };
 }
 
-module.exports = { parseTestMode, getMaxPagesPerFile, getTestGlobalDailyLimit, startupSummary };
+module.exports = { parseTestMode, getMaxPagesPerFile, getTestDailyLimit, getTestGlobalDailyLimit, startupSummary };

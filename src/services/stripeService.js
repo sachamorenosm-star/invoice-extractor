@@ -59,6 +59,8 @@ function currentPeriodKey() {
 
 // TEST_MODE beta configuration
 function getTestDailyLimit() {
+  if (process.env.TEST_MODE === 'true') return require('../utils/config').getTestDailyLimit();
+  // Preserve legacy informational parsing outside TEST_MODE; beta never falls back.
   const raw = process.env.TEST_DAILY_EXTRACTION_LIMIT;
 
   if (!raw) {

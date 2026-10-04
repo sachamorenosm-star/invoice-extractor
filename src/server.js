@@ -1,9 +1,10 @@
 require('dotenv').config();
-const { parseTestMode, getMaxPagesPerFile, getTestGlobalDailyLimit, startupSummary } = require('./utils/config');
+const { parseTestMode, getMaxPagesPerFile, getTestDailyLimit: validateTestDailyLimit, getTestGlobalDailyLimit, startupSummary } = require('./utils/config');
 // Validate before loading auth, database or provider modules.
 parseTestMode(process.env.TEST_MODE);
 getMaxPagesPerFile();
 getTestGlobalDailyLimit();
+validateTestDailyLimit();
 
 const path = require('path');
 const express = require('express');
