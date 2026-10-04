@@ -46,6 +46,7 @@ async function child(mode) {
     RATE_LIMIT_MAX_REQUESTS: '100000', SESSION_SECRET: mode === 'devnosecret' ? '' : 'auth-log-test-secret-auth-log-test-secret-12345',
     ANTHROPIC_API_KEY: '', STRIPE_SECRET_KEY: '', STRIPE_WEBHOOK_SECRET: '',
     RESEND_API_KEY: mode === 'mock' ? 're_mock_not_a_real_key_000000' : '',
+    BETA_ALLOWED_EMAILS: 'dev.user@example.test,mock.user@example.test',
   });
 
   // ---- full output capture ----
@@ -74,6 +75,7 @@ async function child(mode) {
 
   require(path.join(ROOT, 'src/server.js'));
   const database = require(path.join(ROOT, 'src/services/database'));
+  const authService = require(path.join(ROOT, 'src/services/authService'));
   const jwt = require(path.join(ROOT, 'node_modules/jsonwebtoken'));
   await new Promise((r) => setTimeout(r, 300));
 
@@ -115,14 +117,15 @@ async function child(mode) {
       noCredentialInLogs(tok);
       assert.ok(!r.text.includes(tok), 'token in HTTP response');
     });
-    await t('M2 provider failure that echoes the email body: error logged REDACTED, response still generic', async () => {
+    await t('M2 provider failure that echoes the email body: fixed safe category and generic temporary error', async () => {
       failNext = true;
       const r = await jpost('/api/auth/request-magic-link', { email });
       failNext = false;
       const tok = latestToken(email);
-      assert.strictEqual(r.status, 200);
-      assert.ok(/Errore invio email tramite Resend/.test(logs()), 'error not logged at all');
-      assert.ok(/\[REDACTED\]/.test(logs()), 'no redaction marker');
+      assert.strictEqual(r.status, 503);
+      assert.ok(/login_delivery_failed/.test(logs()), 'error not logged at all');
+      assert.ok(!logs().includes('provider rejected message body'), 'provider body logged');
+      assert.strictEqual(database.getLoginToken(tok).used, 0);
       noCredentialInLogs(tok);
       assert.ok(!r.text.includes(tok));
     });
@@ -132,43 +135,47 @@ async function child(mode) {
     let token, cookieVal;
     await t('T1/T2/T4/T5 request link (Resend missing): token, token URL and long-hex strings absent from ALL output', async () => {
       const r = await jpost('/api/auth/request-magic-link', { email });
-      assert.strictEqual(r.status, 200);
-      token = latestToken(lower);
+      assert.strictEqual(r.status, 503);
+      assert.strictEqual(database.db.prepare('SELECT count(*) AS n FROM login_tokens').get().n, 0);
+      token = authService.generateLoginToken(lower);
       noCredentialInLogs(token);
     });
-    await t('T3 safe informational log remains understandable (masked email, redacted hint, no full email)', async () => {
+    await t('T3 safe informational log uses a category without email or verification URL', async () => {
       const L = logs();
-      assert.ok(/Magic-link generato per d\*\*\*@example\.test/.test(L), 'masked-email line missing');
-      assert.ok(/invio saltato/.test(L) && /\/api\/auth\/verify\?token=\[REDACTED\]/.test(L), 'redacted hint missing');
+      assert.ok(/login_delivery_unavailable/.test(L), 'delivery category missing');
+      assert.ok(!L.includes('/api/auth/verify?token='), 'verification URL logged');
       assert.ok(!L.includes(lower), 'full email in logs');
     });
     await t('T6/D response is generic (same for invalid email), and carries no token/link', async () => {
       const a = await jpost('/api/auth/request-magic-link', { email });
       const b = await jpost('/api/auth/request-magic-link', { email: 'not-an-email' });
-      assert.strictEqual(a.status, 200); assert.strictEqual(b.status, 200);
-      assert.strictEqual(a.json.message, b.json.message);
+      assert.strictEqual(a.status, 503); assert.strictEqual(b.status, 503);
+      assert.deepStrictEqual(a.json, b.json);
       const tok = latestToken(lower);
       assert.ok(!a.text.includes(tok) && !/verify|token/i.test(a.text), 'response leaks token/link');
       assert.ok(!JSON.stringify(a.headers).includes(tok), 'header leaks token');
       token = tok; // most recent valid token
     });
-    await t('T7/T10 token verifies once -> 302 /?login=success, cookie HttpOnly+SameSite=Lax' + (prod ? '+Secure' : ''), async () => {
-      const r = await req('GET', '/api/auth/verify?token=' + token);
+    await t('T7/T10 GET is read-only; POST verifies once -> 303 /?login=success, safe cookie flags' + (prod ? '+Secure' : ''), async () => {
+      const page = await req('GET', '/api/auth/verify?token=' + token);
+      assert.strictEqual(page.status, 200); assert.ok(!page.headers['set-cookie']);
+      assert.strictEqual(database.getLoginToken(token).used, 0);
+      const r = await jpost('/api/auth/verify', { token });
       const sc = (r.headers['set-cookie'] || []).join(';');
-      assert.strictEqual(r.status, 302); assert.strictEqual(r.headers.location, '/?login=success');
+      assert.strictEqual(r.status, 303); assert.strictEqual(r.headers.location, '/?login=success');
       assert.ok(/ie_session=/.test(sc) && /HttpOnly/i.test(sc) && /SameSite=Lax/i.test(sc), 'cookie flags');
       if (prod) assert.ok(/Secure/i.test(sc), 'Secure flag missing in production');
       cookieVal = (sc.match(/ie_session=([^;]+)/) || [])[1];
       assert.ok(cookieVal && cookieVal.split('.').length === 3, 'no JWT cookie');
     });
     await t('T8 same token cannot be reused', async () => {
-      const r = await req('GET', '/api/auth/verify?token=' + token);
+      const r = await jpost('/api/auth/verify', { token });
       assert.strictEqual(r.headers.location, '/?login=expired');
     });
     await t('T9 expired token rejected', async () => {
       const tok = 'ab'.repeat(32);
       database.insertLoginToken({ token: tok, email: lower, anon_user_id: null, expires_at: Date.now() - 1000 });
-      const r = await req('GET', '/api/auth/verify?token=' + tok);
+      const r = await jpost('/api/auth/verify', { token: tok });
       assert.strictEqual(r.headers.location, '/?login=expired');
     });
     await t('T12 TEST_MODE accepts the valid session (extraction 200)', async () => {

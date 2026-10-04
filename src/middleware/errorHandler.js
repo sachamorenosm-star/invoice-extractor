@@ -23,14 +23,15 @@ function errorHandler(err, req, res, next) {
   // dati sensibili estratti dalle fatture. Per l'estrazione usiamo solo
   // categorie fisse: anche messaggi e stack possono contenere nomi file.
   const isExtraction = /^\/api\/extract(?:\/|$)/.test(req.originalUrl?.split('?')[0] || '');
-  console.error('[ERROR]', isExtraction ? JSON.stringify({ request_id: req.requestId, error_code: 'EXTRACTION_REQUEST_ERROR' }) : err.message);
-  if (!isExtraction && process.env.NODE_ENV !== 'production') {
+  const isAuth = /^\/api\/auth(?:\/|$)/i.test(req.originalUrl?.split('?')[0] || '');
+  console.error('[ERROR]', isExtraction || isAuth ? JSON.stringify({ request_id: req.requestId, error_code: isAuth ? 'AUTH_REQUEST_ERROR' : 'EXTRACTION_REQUEST_ERROR' }) : err.message);
+  if (!isExtraction && !isAuth && process.env.NODE_ENV !== 'production') {
     console.error(err.stack);
   }
 
   const status = err.status || 500;
   res.status(status).json({
-    error: status === 500 ? 'Errore interno del server.' : err.message,
+    error: status === 500 ? 'Errore interno del server.' : (isAuth ? 'Richiesta di accesso non valida.' : err.message),
   });
 }
 

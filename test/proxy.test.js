@@ -173,14 +173,19 @@ async function child(mode) {
       assert.deepStrictEqual(s, [400, 400, 400, 429], 's ' + s);
     });
   } else if (mode === 'prod') {
-    const verify = async (headers) => { const tok = authService.generateLoginToken('p' + Math.random().toString(16).slice(2, 8) + '@example.test'); return get('/api/auth/verify?token=' + tok, headers); };
+    const verify = async (headers) => {
+      const token = authService.generateLoginToken('p' + Math.random().toString(16).slice(2, 8) + '@example.test');
+      const page = await get('/api/auth/verify?token=' + token, headers);
+      assert.strictEqual(page.status, 200); assert.ok(!page.headers['set-cookie']);
+      return req(PORT, 'POST', '/api/auth/verify', { ...headers, 'Content-Type': 'application/json' }, JSON.stringify({ token }));
+    };
     await t('T8 production + forwarded HTTPS: probe sees req.secure=true, protocol=https', async () => {
       await startProbe(trust, probePort); const r = await get('/', xff(A, { 'X-Forwarded-Proto': 'https' }), probePort);
       assert.strictEqual(r.json.secure, true); assert.strictEqual(r.json.protocol, 'https');
     });
     await t('T8 production + forwarded HTTPS: session cookie is HttpOnly + Secure + SameSite=Lax', async () => {
       const r = await verify(xff(A, { 'X-Forwarded-Proto': 'https' })); const sc = (r.headers['set-cookie'] || []).join(';');
-      assert.strictEqual(r.status, 302); assert.ok(/HttpOnly/i.test(sc) && /Secure/i.test(sc) && /SameSite=Lax/i.test(sc), sc.replace(/ie_session=[^;]+/, 'ie_session=<jwt>'));
+      assert.strictEqual(r.status, 303); assert.ok(/HttpOnly/i.test(sc) && /Secure/i.test(sc) && /SameSite=Lax/i.test(sc), sc.replace(/ie_session=[^;]+/, 'ie_session=<jwt>'));
     });
     await t('T8b Secure flag is NODE_ENV-driven (not req.secure): still set without proxy headers (documented, unchanged)', async () => {
       const sc = ((await verify({})).headers['set-cookie'] || []).join(';'); assert.ok(/Secure/i.test(sc));
@@ -189,8 +194,11 @@ async function child(mode) {
     await t('T9 development over plain HTTP, no proxy headers: app usable, cookie NOT Secure (login works on localhost)', async () => {
       assert.strictEqual((await get('/api/health')).status, 200);
       const tok = authService.generateLoginToken('dev@example.test');
-      const r = await get('/api/auth/verify?token=' + tok); const sc = (r.headers['set-cookie'] || []).join(';');
-      assert.strictEqual(r.status, 302); assert.ok(/HttpOnly/i.test(sc) && !/Secure/i.test(sc));
+      const page = await get('/api/auth/verify?token=' + tok);
+      assert.strictEqual(page.status, 200); assert.ok(!page.headers['set-cookie']);
+      const r = await req(PORT, 'POST', '/api/auth/verify', { 'Content-Type': 'application/json' }, JSON.stringify({ token: tok }));
+      const sc = (r.headers['set-cookie'] || []).join(';');
+      assert.strictEqual(r.status, 303); assert.ok(/HttpOnly/i.test(sc) && !/Secure/i.test(sc));
     });
   }
 

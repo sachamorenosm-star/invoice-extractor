@@ -2,13 +2,14 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
 const database = require('./database');
+const { isValidEmail, normalizeEmail, getBetaAllowedEmails, isBetaAllowedEmail } = require('../utils/betaAccess');
 
 // -----------------------------------------------------------------------
 // Autenticazione senza password, basata su "Magic Link" via email:
 // 1. L'utente chiede l'accesso con la propria email.
 // 2. Generiamo un token monouso valido 15 minuti e lo inviamo via Resend.
-// 3. Cliccando il link, il token viene verificato e viene emessa una
-//    sessione (cookie httpOnly firmato con un JWT).
+// 3. Il link mostra una conferma. Solo il POST esplicito consuma il token
+//    ed emette una sessione (cookie httpOnly firmato con un JWT).
 //
 // Nessuna password viene mai richiesta, salvata o gestita.
 // -----------------------------------------------------------------------
@@ -64,33 +65,8 @@ if (!resend) {
   console.warn('[authService] RESEND_API_KEY assente o placeholder: l\'invio reale delle email di accesso è disabilitato (funzionalità degradata, nessun crash).');
 }
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function isValidEmail(email) {
-  return typeof email === 'string' && email.length <= 254 && EMAIL_PATTERN.test(email.trim());
-}
-
-function normalizeEmail(email) {
-  return email.trim().toLowerCase();
-}
-
-// Il token del Magic Link è una credenziale bearer temporanea: non deve mai
-// finire nei log (né in produzione né in sviluppo). Per i log usiamo solo
-// metadati non segreti: email mascherata e un URL con il token oscurato.
-const SAFE_VERIFY_HINT = '/api/auth/verify?token=[REDACTED]';
-
-function maskEmail(email) {
-  const [local, domain] = normalizeEmail(email).split('@');
-  return `${(local || '').slice(0, 1)}***@${domain || '?'}`;
-}
-
-// Difesa in profondità per i messaggi d'errore di terze parti (es. Resend)
-// che potrebbero riecheggiare il corpo dell'email: oscura "token=<valore>"
-// e qualsiasi sequenza esadecimale lunga (formato dei nostri token).
-function redactSecrets(text) {
-  return String(text)
-    .replace(/token=[^\s&"'<>]+/gi, 'token=[REDACTED]')
-    .replace(/\b[0-9a-f]{32,}\b/gi, '[REDACTED]');
+if (process.env.TEST_MODE === 'true' && getBetaAllowedEmails().size === 0) {
+  console.warn('[authService] beta_login_disabled: allowlist assente o vuota.');
 }
 
 function currentPeriodKey() {
@@ -104,6 +80,7 @@ function currentPeriodKey() {
  * direttamente nei test.
  */
 function generateLoginToken(email, anonUserId) {
+  if (!isBetaAllowedEmail(email)) throw new Error('Login non disponibile per questa richiesta.');
   const token = crypto.randomBytes(32).toString('hex');
   database.insertLoginToken({
     token,
@@ -116,22 +93,21 @@ function generateLoginToken(email, anonUserId) {
 
 /**
  * Genera il token e invia l'email con il link di accesso tramite Resend.
- * Se Resend non è configurato, o l'invio fallisce, non lancia mai
- * un'eccezione verso il chiamante: logga l'accaduto e restituisce
- * { sent: false }. La rotta che la usa risponde comunque con successo
- * generico, per non rivelare se l'email esiste nel sistema.
+ * Nessun token per indirizzi non autorizzati. Gli errori di consegna sono
+ * categorie fisse, senza corpo email, token, indirizzi o dettagli provider.
  */
 async function sendMagicLink(email, anonUserId) {
+  if (!resend) {
+    console.warn('[authService] login_delivery_unavailable');
+    return { sent: false, unavailable: true };
+  }
+
+  if (!isBetaAllowedEmail(email)) return { sent: false, unavailable: false };
   const token = generateLoginToken(email, anonUserId);
   const verifyUrl = `${FRONTEND_URL}/api/auth/verify?token=${token}`;
 
-  if (!resend) {
-    console.warn(`[authService] Magic-link generato per ${maskEmail(email)}: invio saltato (provider email non configurato). Link: ${SAFE_VERIFY_HINT}`);
-    return { sent: false };
-  }
-
   try {
-    await resend.emails.send({
+    const response = await resend.emails.send({
       from: EMAIL_FROM,
       to: normalizeEmail(email),
       subject: 'Il tuo link di accesso a InvoiceExtract',
@@ -148,13 +124,21 @@ async function sendMagicLink(email, anonUserId) {
         '— InvoiceExtract',
       ].join('\n'),
     });
+    // Resend may resolve with { error } rather than reject its promise.
+    if (response?.error || !(response?.data?.id || response?.id)) throw new Error('Delivery failed');
     return { sent: true };
-  } catch (err) {
-    // Non logghiamo mai l'indirizzo email per intero nei log applicativi.
-    const safeMessage = redactSecrets(err && err.message);
-    console.error('[authService] Errore invio email tramite Resend:', safeMessage);
-    return { sent: false, error: safeMessage };
+  } catch {
+    console.error('[authService] login_delivery_failed');
+    return { sent: false, unavailable: true };
   }
+}
+
+// Read-only lookup for GET/HEAD. Does not consume tokens or create users.
+function inspectLoginToken(token) {
+  if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token)) return null;
+  const row = database.getLoginToken(token);
+  if (!row || row.used || row.expires_at <= Date.now() || !isBetaAllowedEmail(row.email)) return null;
+  return row;
 }
 
 /**
@@ -163,13 +147,9 @@ async function sendMagicLink(email, anonUserId) {
  * restituisce { email, anonUserId }. Altrimenti restituisce null.
  */
 function verifyLoginToken(token) {
-  if (!token) return null;
-  const row = database.getLoginToken(token);
+  if (!inspectLoginToken(token)) return null;
+  const row = database.consumeLoginToken(token, Date.now());
   if (!row) return null;
-  if (row.used) return null;
-  if (row.expires_at < Date.now()) return null;
-
-  database.markLoginTokenUsed(token);
   return { email: row.email, anonUserId: row.anon_user_id || null };
 }
 
@@ -269,6 +249,7 @@ module.exports = {
   isValidEmail,
   generateLoginToken,
   sendMagicLink,
+  inspectLoginToken,
   verifyLoginToken,
   findOrCreateUserForEmail,
   setSessionCookie,

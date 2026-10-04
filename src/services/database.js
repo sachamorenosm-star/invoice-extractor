@@ -161,6 +161,11 @@ const statements = {
   `),
   getLoginToken: db.prepare('SELECT * FROM login_tokens WHERE token = ?'),
   markLoginTokenUsed: db.prepare('UPDATE login_tokens SET used = 1 WHERE token = ?'),
+  consumeLoginToken: db.prepare(`
+    UPDATE login_tokens SET used = 1
+    WHERE token = ? AND used = 0 AND expires_at > ?
+    RETURNING email, anon_user_id
+  `),
   insertWaitlistSignup: db.prepare(`
     INSERT INTO waitlist_signups (email, plan, created_at)
     VALUES (@email, @plan, @created_at)
@@ -222,6 +227,11 @@ function getLoginToken(token) {
 
 function markLoginTokenUsed(token) {
   statements.markLoginTokenUsed.run(token);
+}
+
+// One conditional write: only one connection/process can consume a token.
+function consumeLoginToken(token, now) {
+  return statements.consumeLoginToken.get(token, now) || null;
 }
 
 function insertWaitlistSignup({ email, plan }) {
@@ -290,6 +300,7 @@ module.exports = {
   insertLoginToken,
   getLoginToken,
   markLoginTokenUsed,
+  consumeLoginToken,
   insertWaitlistSignup,
   insertFeedbackSignal,
   getTestUsage,

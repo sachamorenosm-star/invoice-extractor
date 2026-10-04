@@ -616,7 +616,7 @@
   // Autenticazione (Magic Link) e sezione "Il mio profilo"
   //
   // Nessuna password: l'utente riceve via email un link temporaneo che,
-  // una volta cliccato, imposta un cookie di sessione httpOnly lato
+  // dopo la conferma esplicita, imposta un cookie di sessione httpOnly lato
   // server. Qui gestiamo solo l'interfaccia: apertura modali, invio
   // della richiesta di link, lettura dello stato utente autenticato.
   // ---------------------------------------------------------------
@@ -655,11 +655,12 @@
         body: JSON.stringify({ email }),
       });
       const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Accesso temporaneamente non disponibile. Riprova tra poco.');
       els.loginForm.classList.add('hidden');
-      els.loginModalMessage.textContent = data.message || 'Controlla la tua email: ti abbiamo inviato un link di accesso.';
+      els.loginModalMessage.textContent = data.message || "Se l'indirizzo è autorizzato, riceverai un link di accesso.";
       els.loginModalMessage.classList.remove('hidden');
     } catch (err) {
-      showToast('Errore di rete: riprova tra poco.', true);
+      showToast('Accesso temporaneamente non disponibile. Riprova tra poco.', true);
     } finally {
       els.loginSubmitBtn.disabled = false;
       els.loginSubmitBtn.textContent = 'Invia link di accesso';
