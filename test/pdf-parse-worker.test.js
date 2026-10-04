@@ -57,7 +57,10 @@ async function pdf(pages, padBytes = 0) {
   return Buffer.from(await doc.save());
 }
 // Header + random bytes: pdf-lib's synchronous junk scan needs about 0.8 s per 100 KB (inline).
-const malformed = (bytes) => Buffer.concat([Buffer.from('%PDF-1.7\n'), crypto.randomBytes(bytes), Buffer.from('\n%%EOF')]);
+// pdf-lib drops exactly one unparseable byte after the header, then fails immediately if the next
+// byte is a digit (about 4% of random payloads) instead of entering the slow junk scan this fixture
+// must exercise. Two non-digit bytes ('ZZ') make the slow path deterministic (0 of 700 samples fast).
+const malformed = (bytes) => Buffer.concat([Buffer.from('%PDF-1.7\nZZ'), crypto.randomBytes(bytes), Buffer.from('\n%%EOF')]);
 function request(route, method, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const started = Date.now();
