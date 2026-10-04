@@ -382,7 +382,7 @@
       </p>
 
       <div id="warning-banner" class="hidden mb-4 p-3.5 rounded-2xl bg-warning-50 border border-warning-100 text-warning-700 dark:bg-warning-900/20 dark:border-warning-800/60 dark:text-warning-300 text-sm">
-        ⚠️ Alcune righe presentano discrepanze tra Imponibile + IVA e Totale. Sono evidenziate in giallo: verificale prima dell'export.
+        ⚠️ Alcune righe richiedono un controllo (dati mancanti, importi non coerenti o documento non leggibile). Sono evidenziate: verificale prima dell'export.
       </div>
 
       <div class="overflow-x-auto rounded-3xl border border-ink-100 bg-white shadow-card dark:bg-ink-900 dark:border-ink-800">
@@ -670,6 +670,24 @@
     </div>
   </div>
 
+  <!-- ANTEPRIMA FOTO (camera/galleria): la foto entra in coda solo con "Usa foto" -->
+  <div id="image-preview-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="image-preview-title">
+    <div class="card w-full max-w-md p-5">
+      <h3 id="image-preview-title" class="font-display text-lg font-bold text-ink-900 dark:text-white">Controlla la foto</h3>
+      <div class="mt-3 flex justify-center rounded-2xl bg-ink-100 dark:bg-ink-800 p-2">
+        <canvas id="image-preview-canvas" class="max-w-full h-auto rounded-xl" role="img" aria-label="Anteprima della foto"></canvas>
+      </div>
+      <p id="image-preview-status" class="mt-3 text-sm font-semibold"></p>
+      <p id="image-preview-detail" class="mt-1 text-xs text-ink-500 dark:text-ink-400"></p>
+      <div class="mt-4 flex flex-col sm:flex-row gap-2">
+        <button id="image-preview-use" type="button" class="btn-primary flex-1">Usa foto</button>
+        <button id="image-preview-retake" type="button" class="btn-secondary flex-1">Rifai</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/uploadQuality.js"></script>
+  <script src="/imageIntake.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

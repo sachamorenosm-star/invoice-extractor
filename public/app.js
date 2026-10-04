@@ -34,6 +34,13 @@
     toast: document.getElementById('toast'),
     themeToggle: document.getElementById('theme-toggle'),
 
+    imagePreviewModal: document.getElementById('image-preview-modal'),
+    imagePreviewCanvas: document.getElementById('image-preview-canvas'),
+    imagePreviewStatus: document.getElementById('image-preview-status'),
+    imagePreviewDetail: document.getElementById('image-preview-detail'),
+    imagePreviewUse: document.getElementById('image-preview-use'),
+    imagePreviewRetake: document.getElementById('image-preview-retake'),
+
     mobileMenuBtn: document.getElementById('mobile-menu-btn'),
     mobileMenu: document.getElementById('mobile-menu'),
     mobileMenuSettingsBtn: document.getElementById('mobile-menu-settings-btn'),
@@ -219,7 +226,7 @@
     });
   });
   els.dropZone.addEventListener('drop', (e) => {
-    addFiles(e.dataTransfer.files);
+    addFiles(e.dataTransfer.files, 'drop');
   });
   els.dropZone.addEventListener('click', () => els.fileInput.click());
   // Accessibilità da tastiera: la drop-zone ha role="button" e tabindex="0"
@@ -232,7 +239,13 @@
       els.fileInput.click();
     }
   });
-  els.fileInput.addEventListener('change', () => addFiles(els.fileInput.files));
+  // Copia la selezione e svuota l'input: così si può scegliere di nuovo lo stesso file (es. dopo "Rifai").
+  function takeInputFiles(input, source) {
+    const picked = Array.from(input.files);
+    input.value = '';
+    addFiles(picked, source);
+  }
+  els.fileInput.addEventListener('change', () => takeInputFiles(els.fileInput, 'file'));
 
   // Mobile upload buttons
   document.getElementById('btn-file-input')?.addEventListener('click', () => {
@@ -247,10 +260,10 @@
 
   // Wire hidden inputs to addFiles
   document.getElementById('camera-input')?.addEventListener('change', (e) => {
-    addFiles(e.target.files);
+    takeInputFiles(e.target, 'camera');
   });
   document.getElementById('gallery-input')?.addEventListener('change', (e) => {
-    addFiles(e.target.files);
+    takeInputFiles(e.target, 'gallery');
   });
 
   // ---------------------------------------------------------------
@@ -284,36 +297,67 @@
 
     if (pastedFiles.length) {
       e.preventDefault();
-      addFiles(pastedFiles);
+      addFiles(pastedFiles, 'paste');
     }
   });
 
   const ACCEPTED_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
-  const MAX_FILE_SIZE_MB = 10; // aggiornato da /api/config se disponibile
 
-  function addFiles(fileList) {
-    clearError();
-    const incoming = Array.from(fileList);
-    const rejected = [];
+  // Limiti di upload: partono dai default del server e vengono sostituiti dai valori
+  // di /api/config (vedi fetchConfig). Nessun limite duplicato altrove nel frontend.
+  const limits = { maxFileSizeMb: 10, maxFilesPerRequest: 10 };
+  // Qualità (OK / CHECK) delle foto in coda: finisce nelle righe estratte dallo stesso file.
+  const fileQuality = new WeakMap();
 
-    for (const file of incoming) {
-      if (!ACCEPTED_TYPES.includes(file.type)) {
-        rejected.push(`${file.name} (tipo non supportato)`);
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-        rejected.push(`${file.name} (supera ${MAX_FILE_SIZE_MB}MB)`);
-        continue;
-      }
+  // Ingresso file: decodifica reale, ricodifica JPEG (senza EXIF), anteprima per camera/galleria.
+  // I PDF passano solo dai controlli di tipo e peso e non vengono toccati.
+  const intake = ImageIntake.createIntake({
+    acceptedTypes: ACCEPTED_TYPES,
+    getLimits: () => limits,
+    getQueueSize: () => state.files.length,
+    addFile: (file, quality) => {
       state.files.push(file);
-    }
+      if (quality) fileQuality.set(file, quality);
+      renderFileQueue();
+    },
+    showPreview: (item) => renderImagePreview(item),
+    hidePreview: () => closeImagePreview(),
+    showErrors: (messages) => showError(messages.join(' ')),
+    reopenPicker: (source) => document.getElementById(source === 'camera' ? 'camera-input' : 'gallery-input')?.click(),
+  });
 
-    if (rejected.length) {
-      showError('File scartati: ' + rejected.join(', '));
-    }
-
-    renderFileQueue();
+  function addFiles(fileList, source = 'file') {
+    clearError();
+    intake.handle(fileList, source);
   }
+
+  // ---------------------------------------------------------------
+  // Anteprima foto (camera / galleria): la foto entra in coda solo con "Usa foto".
+  // ---------------------------------------------------------------
+  function renderImagePreview(item) {
+    const canvas = els.imagePreviewCanvas;
+    const scale = Math.min(1, 440 / Math.max(item.width, item.height));
+    canvas.width = Math.max(1, Math.round(item.width * scale));
+    canvas.height = Math.max(1, Math.round(item.height * scale));
+    canvas.getContext('2d').drawImage(item.bitmap, 0, 0, canvas.width, canvas.height);
+
+    const ok = item.quality.level === 'ok';
+    els.imagePreviewStatus.textContent = ok ? '✓ Foto pronta' : '⚠️ Da verificare';
+    els.imagePreviewStatus.classList.toggle('text-success-700', ok);
+    els.imagePreviewStatus.classList.toggle('text-warning-700', !ok);
+    els.imagePreviewDetail.textContent = ok
+      ? `${item.width}×${item.height} px. Controlla che il testo sia leggibile e il documento intero.`
+      : item.quality.reasons.join(' ');
+    els.imagePreviewRetake.textContent = item.source === 'camera' ? 'Rifai' : "Scegli un'altra";
+    els.imagePreviewModal.classList.remove('hidden');
+  }
+  function closeImagePreview() {
+    els.imagePreviewModal.classList.add('hidden');
+    const canvas = els.imagePreviewCanvas;
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  }
+  els.imagePreviewUse.addEventListener('click', () => intake.use());
+  els.imagePreviewRetake.addEventListener('click', () => intake.retake());
 
   function renderFileQueue() {
     if (!state.files.length) {
@@ -363,6 +407,13 @@
     hideIncompleteBanner();
     setExtracting(true);
 
+    // Foto con avvisi (es. risoluzione bassa): la riga estratta da quel file va controllata.
+    const clientNotes = new Map();
+    state.files.forEach((f) => {
+      const quality = fileQuality.get(f);
+      if (quality && quality.level === 'check') clientNotes.set(f.name, quality.reasons);
+    });
+
     const formData = new FormData();
     state.files.forEach((f) => formData.append('invoices', f));
 
@@ -391,7 +442,10 @@
         throw new Error(data.error || 'Errore durante l\'estrazione dei dati.');
       }
 
-      state.rows = data.results || [];
+      state.rows = (data.results || []).map((row) => {
+        const baseName = String(row.source_file || '').replace(/ \(documento \d+\)$/, '');
+        return clientNotes.has(baseName) ? { ...row, _clientNotes: clientNotes.get(baseName) } : row;
+      });
       state.files = [];
       renderFileQueue();
       renderResults();
@@ -406,11 +460,10 @@
         hideIncompleteBanner();
       }
 
-      const pagesLabel = typeof data.pagesProcessed === 'number'
-        ? `, ${data.pagesProcessed} pagina/e in totale`
-        : '';
-      showToast(`Estrazione completata: ${state.rows.length} documento/i elaborato/i${pagesLabel}.`);
-      askPaywallSurvey();
+      // Il messaggio finale non dice "completata" se tutte le righe sono fallite.
+      const summary = UploadQuality.summarizeExtraction(state.rows, isRowMathValid);
+      showToast(summary.message, summary.isError);
+      if (summary.kind !== 'failed') askPaywallSurvey();
     } catch (err) {
       showError(err.message);
     } finally {
@@ -472,13 +525,16 @@
     }
     els.resultsSection.classList.remove('hidden');
 
-    const hasWarning = state.rows.some((r) => r.math_verified !== true || !verifyRowMath(r));
+    // Stato di ogni riga: OK / CHECK / UNREADABLE (errore, campi chiave mancanti, verifica matematica).
+    const qualities = state.rows.map((r) => UploadQuality.rowQuality(r, isRowMathValid));
+    const hasWarning = qualities.some((q) => q.state !== 'OK');
     els.warningBanner.classList.toggle('hidden', !hasWarning);
 
     els.resultsTbody.innerHTML = state.rows.map((row, i) => {
-      const warn = row.math_verified !== true || !verifyRowMath(row);
+      const quality = qualities[i];
+      const warn = quality.state !== 'OK';
       const editHint = 'Clicca per modificare';
-      const suggestion = warn ? computeMathSuggestion(row) : null;
+      const suggestion = quality.state === 'CHECK' ? computeMathSuggestion(row) : null;
       return `
         <tr data-idx="${i}" class="${warn ? 'row-warning' : 'row-ok'} transition-colors duration-200">
           <td class="px-3 py-2.5 text-ink-500 dark:text-ink-400 max-w-[140px] truncate align-top" title="${escapeHtml(row.source_file || '')}">${escapeHtml(row.source_file || '-')}</td>
@@ -490,9 +546,14 @@
           <td class="px-3 py-2.5 text-right field align-top" data-field="total" contenteditable="true" title="${editHint}">${formatNum(row.total)}</td>
           <td class="px-3 py-2.5 field align-top" data-field="currency" contenteditable="true" title="${editHint}">${escapeHtml(row.currency || '')}</td>
           <td class="px-3 py-2.5 text-center align-top">
-            ${warn
-              ? '<span class="inline-flex items-center gap-1 rounded-full bg-warning-100 text-warning-700 dark:bg-warning-900/40 dark:text-warning-300 text-xs font-semibold px-2 py-0.5">⚠️ Da verificare</span>'
-              : '<span class="inline-flex items-center gap-1 rounded-full bg-success-100 text-success-700 dark:bg-success-900/40 dark:text-success-300 text-xs font-semibold px-2 py-0.5">✓ OK</span>'}
+            ${quality.state === 'UNREADABLE'
+              ? '<span class="inline-flex items-center gap-1 rounded-full bg-danger-100 text-danger-700 dark:bg-danger-900/40 dark:text-danger-300 text-xs font-semibold px-2 py-0.5">✕ Non leggibile</span>'
+              : warn
+                ? '<span class="inline-flex items-center gap-1 rounded-full bg-warning-100 text-warning-700 dark:bg-warning-900/40 dark:text-warning-300 text-xs font-semibold px-2 py-0.5">⚠️ Da verificare</span>'
+                : '<span class="inline-flex items-center gap-1 rounded-full bg-success-100 text-success-700 dark:bg-success-900/40 dark:text-success-300 text-xs font-semibold px-2 py-0.5">✓ OK</span>'}
+            ${warn && quality.message ? `
+              <div class="mt-1.5 text-[11px] leading-snug text-ink-600 dark:text-ink-300 max-w-[230px] mx-auto text-left">${escapeHtml(quality.message)}</div>
+            ` : ''}
             ${suggestion ? `
               <div class="mt-1.5 text-[11px] leading-snug text-ink-500 dark:text-ink-400 italic max-w-[230px] mx-auto text-left">
                 💡 Suggerimento: se <strong class="not-italic text-ink-700 dark:text-ink-200">${suggestion.fieldLabel}</strong> fosse
@@ -520,6 +581,11 @@
         let value = e.target.textContent.trim();
         if (['subtotal', 'vat_amount', 'total'].includes(field)) {
           value = toNumberOrNull(value);
+        }
+        // Correggere a mano un campo supera il vecchio errore di estrazione: la riga torna a OK / CHECK.
+        if (state.rows[idx][field] !== value) {
+          delete state.rows[idx].error;
+          delete state.rows[idx].error_code;
         }
         state.rows[idx][field] = value;
         recomputeVerification(idx);
@@ -560,6 +626,14 @@
     const total = toNumberOrNull(row.total);
     const diff = Math.round((sub + vat - total) * 100) / 100;
     return [sub, vat, total].every((n) => n !== null) && Math.abs(diff) <= 0.01;
+  }
+
+  function rowNeedsMathCheck(row) {
+    return row.math_verified !== true || !verifyRowMath(row);
+  }
+
+  function isRowMathValid(row) {
+    return !rowNeedsMathCheck(row);
   }
 
   // Calcola un'IPOTESI (non una correzione) di quale sarebbe il Totale
@@ -1012,8 +1086,13 @@
       const res = await fetch('/api/config');
       if (res.ok) {
         const data = await res.json();
-        if (data.maxFileSizeMb) {
+        // I limiti di upload del client seguono sempre quelli del server.
+        if (Number.isInteger(data.maxFileSizeMb) && data.maxFileSizeMb > 0) {
+          limits.maxFileSizeMb = data.maxFileSizeMb;
           els.maxSizeLabel.textContent = data.maxFileSizeMb;
+        }
+        if (Number.isInteger(data.maxFilesPerRequest) && data.maxFilesPerRequest > 0) {
+          limits.maxFilesPerRequest = data.maxFilesPerRequest;
         }
         launchMode = data.launchMode === 'live' ? 'live' : 'waitlist';
         applyLaunchModeUi();
