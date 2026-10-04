@@ -47,11 +47,12 @@ const extractLimiter = rateLimit({
 // che lo supererebbe viene bloccata senza sprecare crediti IA.
 async function countRequestPages(req) {
   if (!req.files || req.files.length === 0) return 0;
-  const { counts, total } = await countTotalPages(req.files);
+  const { counts, errors, total } = await countTotalPages(req.files);
   // Pagine per singolo file (stesso ordine di req.files): il route handler
   // le riusa per rilasciare la quota TEST_MODE solo dei file che falliscono
   // l'estrazione, senza doverle ricontare.
   req.pageCountsPerFile = counts;
+  req.pageErrorsPerFile = errors;
   return total;
 }
 
@@ -77,10 +78,10 @@ router.post(
         return res.status(400).json({ error: 'Nessun file caricato.' });
       }
 
-      const pageCounts = req.pageCountsPerFile || req.files.map(() => 1);
+      const pageCounts = req.pageCountsPerFile;
 
       // Elaborazione in parallelo: ogni file è un Buffer in RAM, inviato a
-      // Claude e mai scritto su disco (GDPR zero-retention). Un singolo file
+      // Claude e mai scritto su disco dall'applicazione. Un singolo file
       // può contenere PIÙ fatture/ricevute distinte (es. una scansione
       // cumulativa multipagina): extractInvoiceData restituisce un oggetto
       // { records, truncated, extractedCount } per ciascun file, che qui
@@ -89,6 +90,7 @@ router.post(
       const resultsPerFile = await Promise.all(
         req.files.map(async (file, index) => {
           try {
+            if (req.pageErrorsPerFile[index]) throw req.pageErrorsPerFile[index];
             const extraction = await extractInvoiceData(file.buffer, file.mimetype, file.originalname);
             return {
               filename: file.originalname,
@@ -114,6 +116,7 @@ router.post(
                 currency: '',
                 math_verified: false,
                 error: err.message || 'Errore di estrazione.',
+                error_code: req.pageErrorsPerFile[index]?.code || 'EXTRACTION_FAILED',
               }],
               truncated: false,
               extractedCount: 0,
@@ -126,6 +129,12 @@ router.post(
       );
       const results = resultsPerFile.flatMap((r) => r.records);
       const truncatedFiles = resultsPerFile.filter((r) => r.truncated);
+      const failures = resultsPerFile.filter((r) => r.failed);
+      req.extractionOutcome = {
+        successCount: resultsPerFile.length - failures.length,
+        failureCount: failures.length,
+        errorCode: failures.length ? 'FILE_FAILURE' : (truncatedFiles.length ? 'EXTRACTION_INCOMPLETE' : null),
+      };
 
       if (isTestMode) {
         // La quota TEST_MODE per totalPages è già stata riservata

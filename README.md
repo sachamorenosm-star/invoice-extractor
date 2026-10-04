@@ -8,8 +8,9 @@ matematica (IA + controllo programmatico indipendente).
 ## Caratteristiche principali
 
 - Upload drag & drop di PDF multipagina e immagini (JPG/PNG/WEBP)
-- **Zero-Retention GDPR**: i file sono elaborati solo in memoria (RAM),
-  mai scritti su disco, ed eliminati subito dopo l'elaborazione
+- **Elaborazione temporanea**: i file sono elaborati solo in memoria (RAM),
+  mai scritti su disco dall'applicazione. Il trattamento e l'eventuale
+  conservazione presso il fornitore IA sono soggetti ai suoi termini e privacy policy.
 - Estrazione strutturata dei dati (fornitore, data, numero fattura,
   imponibile, IVA, totale, valuta, righe voci) tramite Claude
 - **Doppia autoverifica dei calcoli**: flag `math_verified` calcolato

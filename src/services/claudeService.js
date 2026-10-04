@@ -142,7 +142,7 @@ async function extractInvoiceData(fileBuffer, mimetype, filename) {
     });
   } catch (err) {
     // Non logghiamo mai il contenuto del documento, solo l'errore tecnico.
-    console.error(`[claudeService] Errore API Anthropic per file "${filename}":`, err.message);
+    console.error('[claudeService] error_code=PROVIDER_ERROR');
     throw Object.assign(new Error(`Estrazione fallita per "${filename}": errore del servizio IA.`), { status: 502 });
   }
 
@@ -159,7 +159,7 @@ async function extractInvoiceData(fileBuffer, mimetype, filename) {
   // potrebbe averne persi alcuni in coda).
   const truncated = response.stop_reason === 'max_tokens';
   if (truncated) {
-    console.error(`[claudeService] Risposta troncata (stop_reason="max_tokens") per "${filename}": ${toolUseBlocks.length} documento/i estratti prima del limite di token.`);
+    console.error('[claudeService] error_code=EXTRACTION_INCOMPLETE');
   }
 
   const multipleDocuments = toolUseBlocks.length > 1;

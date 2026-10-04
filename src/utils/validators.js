@@ -1,4 +1,5 @@
 // Validatori di input condivisi tra le rotte API.
+const { toNumber } = require('./mathVerifier');
 
 function isNonEmptyArray(value) {
   return Array.isArray(value) && value.length > 0;
@@ -35,8 +36,8 @@ function sanitizeString(value) {
 }
 
 function sanitizeNumber(value) {
-  const num = parseFloat(String(value).replace(',', '.'));
-  return Number.isFinite(num) ? num : 0;
+  const num = toNumber(value);
+  return Number.isFinite(num) ? num : null;
 }
 
 const ALLOWED_EXPORT_FORMATS = ['xlsx', 'csv'];

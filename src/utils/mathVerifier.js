@@ -7,9 +7,9 @@
 const TOLERANCE = 0.01;
 
 function toNumber(value) {
-  if (value === null || value === undefined || value === '') return NaN;
-  if (typeof value === 'number') return value;
-  const parsed = parseFloat(String(value).replace(',', '.'));
+  if (typeof value !== 'number' && typeof value !== 'string') return NaN;
+  if (typeof value === 'string' && value.trim() === '') return NaN;
+  const parsed = Number(String(value).replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : NaN;
 }
 

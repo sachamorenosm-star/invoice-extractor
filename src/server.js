@@ -1,4 +1,8 @@
 require('dotenv').config();
+const { parseTestMode, getMaxPagesPerFile, startupSummary } = require('./utils/config');
+// Validate before loading auth, database or provider modules.
+parseTestMode(process.env.TEST_MODE);
+getMaxPagesPerFile();
 
 const path = require('path');
 const express = require('express');
@@ -17,6 +21,9 @@ const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { getTestDailyLimit } = require('./services/stripeService');
 
 const app = express();
+const { requestId, extractionLifecycle } = require('./middleware/requestId');
+app.use(requestId);
+app.use('/api/extract', extractionLifecycle);
 
 // Proxy fidati: su Render il servizio è raggiungibile SOLO tramite il suo
 // load balancer (un solo hop), che termina TLS e inoltra a Express. Senza
@@ -147,6 +154,7 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 app.listen(PORT, () => {
+  console.log('[server] configuration', JSON.stringify(startupSummary(process.env, getTestDailyLimit(), require('./middleware/upload'))));
   console.log(`Invoice Extractor server in ascolto sulla porta ${PORT}`);
 });
 

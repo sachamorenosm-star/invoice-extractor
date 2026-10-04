@@ -1,4 +1,5 @@
 const { PDFDocument } = require('pdf-lib');
+const { getMaxPagesPerFile } = require('./config');
 
 // Conta le pagine REALI di un PDF (in memoria, mai su disco). Un PDF
 // multipagina deve contare come N "pagine" ai fini del limite di piano,
@@ -6,32 +7,44 @@ const { PDFDocument } = require('pdf-lib');
 // (una chiamata a Claude per pagina/documento) sarebbe molto più alto di
 // quanto riflesso nel limite mostrato all'utente.
 async function countPdfPages(buffer) {
-  const doc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-  return doc.getPageCount();
+  const doc = await PDFDocument.load(buffer);
+  const pages = doc.getPageCount();
+  if (!Number.isSafeInteger(pages) || pages < 1) throw new Error('Invalid PDF page count');
+  return pages;
 }
 
 // Conta le "pagine" di un singolo file caricato: per un PDF sono le pagine
 // reali del documento; per un'immagine (JPG/PNG/WEBP) conta sempre come 1.
-// Se il PDF non è analizzabile (corrotto, protetto in modo non gestibile),
-// non blocchiamo la richiesta: applichiamo un fallback conservativo di 1
-// pagina e logghiamo l'accaduto (senza esporre contenuto del file).
+// Un PDF non analizzabile viene rifiutato prima di qualunque chiamata IA.
 async function countFilePages(file) {
   if (file.mimetype !== 'application/pdf') {
     return 1;
   }
   try {
     return await countPdfPages(file.buffer);
-  } catch (err) {
-    console.error(`[pageCounter] Impossibile contare le pagine di "${file.originalname}", conteggiato come 1 pagina:`, err.message);
-    return 1;
+  } catch {
+    throw Object.assign(new Error('PDF non leggibile: impossibile verificare il numero di pagine.'), { code: 'PDF_UNPARSEABLE' });
   }
 }
 
 // Conta il totale di pagine per un intero set di file caricati in una
 // richiesta (somma delle pagine reali di ciascun file).
 async function countTotalPages(files) {
-  const counts = await Promise.all(files.map(countFilePages));
-  return { counts, total: counts.reduce((sum, n) => sum + n, 0) };
+  const maxPages = getMaxPagesPerFile();
+  const checks = await Promise.all(files.map(async (file) => {
+    try {
+      const pages = await countFilePages(file);
+      if (pages > maxPages) {
+        return { pages: 0, error: Object.assign(new Error(`Il file supera il limite di ${maxPages} pagine.`), { code: 'MAX_PAGES_PER_FILE_EXCEEDED' }) };
+      }
+      return { pages, error: null };
+    } catch (error) {
+      if (error.code !== 'PDF_UNPARSEABLE') throw error;
+      return { pages: 0, error };
+    }
+  }));
+  const counts = checks.map((check) => check.pages);
+  return { counts, errors: checks.map((check) => check.error), total: counts.reduce((sum, n) => sum + n, 0) };
 }
 
 module.exports = { countPdfPages, countFilePages, countTotalPages };

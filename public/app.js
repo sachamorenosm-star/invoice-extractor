@@ -468,11 +468,11 @@
     }
     els.resultsSection.classList.remove('hidden');
 
-    const hasWarning = state.rows.some((r) => r.math_verified === false);
+    const hasWarning = state.rows.some((r) => r.math_verified !== true || !verifyRowMath(r));
     els.warningBanner.classList.toggle('hidden', !hasWarning);
 
     els.resultsTbody.innerHTML = state.rows.map((row, i) => {
-      const warn = row.math_verified === false;
+      const warn = row.math_verified !== true || !verifyRowMath(row);
       const editHint = 'Clicca per modificare';
       const suggestion = warn ? computeMathSuggestion(row) : null;
       return `
@@ -515,7 +515,7 @@
         const field = e.target.dataset.field;
         let value = e.target.textContent.trim();
         if (['subtotal', 'vat_amount', 'total'].includes(field)) {
-          value = parseFloat(value.replace(',', '.')) || 0;
+          value = toNumberOrNull(value);
         }
         state.rows[idx][field] = value;
         recomputeVerification(idx);
@@ -532,19 +532,30 @@
     });
   }
 
+  function toNumberOrNull(value) {
+    if (typeof value !== 'number' && typeof value !== 'string') return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
+    const num = Number(String(value).replace(',', '.'));
+    return Number.isFinite(num) ? num : null;
+  }
+
   function formatNum(n) {
     if (n === undefined || n === null || n === '') return '';
-    const num = Number(n);
-    return Number.isFinite(num) ? num.toFixed(2) : String(n);
+    const num = toNumberOrNull(n);
+    return num === null ? '' : num.toFixed(2);
   }
 
   function recomputeVerification(idx) {
     const row = state.rows[idx];
-    const sub = Number(row.subtotal) || 0;
-    const vat = Number(row.vat_amount) || 0;
-    const total = Number(row.total) || 0;
-    const diff = Math.abs(sub + vat - total);
-    row.math_verified = diff <= 0.01;
+    row.math_verified = verifyRowMath(row);
+  }
+
+  function verifyRowMath(row) {
+    const sub = toNumberOrNull(row.subtotal);
+    const vat = toNumberOrNull(row.vat_amount);
+    const total = toNumberOrNull(row.total);
+    const diff = Math.round((sub + vat - total) * 100) / 100;
+    return [sub, vat, total].every((n) => n !== null) && Math.abs(diff) <= 0.01;
   }
 
   // Calcola un'IPOTESI (non una correzione) di quale sarebbe il Totale
@@ -552,11 +563,11 @@
   // Non modifica mai i dati: serve solo a suggerire all'utente cosa
   // controllare sul documento originale.
   function computeMathSuggestion(row) {
-    const sub = Number(row.subtotal);
-    const vat = Number(row.vat_amount);
-    const total = Number(row.total);
+    const sub = toNumberOrNull(row.subtotal);
+    const vat = toNumberOrNull(row.vat_amount);
+    const total = toNumberOrNull(row.total);
 
-    if (![sub, vat, total].every(Number.isFinite)) return null;
+    if ([sub, vat, total].some((n) => n === null)) return null;
 
     const expectedTotal = Math.round((sub + vat) * 100) / 100;
     if (Math.abs(expectedTotal - total) <= 0.01) return null;

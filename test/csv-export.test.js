@@ -153,9 +153,9 @@ async function main() {
     const out = await csvFor([base({ math_verified: true }), base({ total: 130, math_verified: true })]);
     assert.ok(out.data[0].includes('OK')); assert.ok(out.data[1].includes('Da verificare'));
   });
-  await t('T16b blank/failed row behaviour NOT worsened (separate known P2: still exported as before)', async () => {
+  await t('T16b blank/failed row exports blank amounts and Da verificare', async () => {
     const out = await csvFor([{ source_file: 'failed.pdf', supplier: '', subtotal: null, vat_amount: null, total: null }]);
-    assert.deepStrictEqual(out.data[0].slice(0, 8), ['failed.pdf', '', '', '', '0.00', '0.00', '0.00', 'OK']);
+    assert.deepStrictEqual(out.data[0].slice(0, 8), ['failed.pdf', '', '', '', '', '', '', 'Da verificare']);
   });
   await t('T16c unit: neutralizeFormula handles null/numbers/empty', async () => {
     assert.strictEqual(neutralizeFormula(null), null); assert.strictEqual(neutralizeFormula(''), ''); assert.strictEqual(neutralizeFormula(42), '42');

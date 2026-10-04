@@ -1,5 +1,5 @@
 const ExcelJS = require('exceljs');
-const { verifyInvoiceMath } = require('../utils/mathVerifier');
+const { verifyInvoiceMath, toNumber } = require('../utils/mathVerifier');
 
 const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
 const HEADER_FONT = { color: { argb: 'FFFFFFFF' }, bold: true };
@@ -25,8 +25,7 @@ const CURRENCY_SYMBOLS = { EUR: '€', USD: '$', GBP: '£' };
 const CSV_DELIMITER = ';';
 
 function toNumberOrNull(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const num = Number(value);
+  const num = toNumber(value);
   return Number.isFinite(num) ? num : null;
 }
 
