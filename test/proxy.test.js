@@ -44,7 +44,7 @@ async function child(mode) {
   Object.assign(process.env, {
     TEST_DB_PATH: path.join(tmpDir, 'p.sqlite'), PORT: String(PORT), FRONTEND_URL: `http://127.0.0.1:${PORT}`,
     NODE_ENV: mode === 'prod' ? 'production' : 'development', LAUNCH_MODE: 'waitlist',
-    TEST_MODE: mode === 'anon' || mode === 'dev' || mode === 'prod' ? 'false' : 'true', TEST_DAILY_EXTRACTION_LIMIT: '1000',
+    TEST_MODE: mode === 'anon' || mode === 'dev' || mode === 'prod' ? 'false' : 'true', TEST_DAILY_EXTRACTION_LIMIT: '1000', TEST_GLOBAL_DAILY_EXTRACTION_LIMIT: '500',
     RATE_LIMIT_MAX_REQUESTS: mode === 'limit' ? '3' : '100000',
     SESSION_SECRET: 'proxy-test-secret-proxy-test-secret-123456',
     ANTHROPIC_API_KEY: '', STRIPE_SECRET_KEY: '', STRIPE_WEBHOOK_SECRET: '', RESEND_API_KEY: '',

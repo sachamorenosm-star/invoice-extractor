@@ -380,6 +380,10 @@
           showError('Accedi con il tuo link magico per utilizzare gratuitamente la versione di test.');
           return; // Non lanciare l'eccezione generica
         }
+        if (res.status === 429 && data.code === 'TEST_GLOBAL_DAILY_LIMIT_REACHED') {
+          showError('Il limite giornaliero della beta è stato raggiunto. Riprova domani.');
+          return;
+        }
         if (res.status === 429 && data.code === 'TEST_DAILY_LIMIT_REACHED') {
           showError('Hai raggiunto il limite giornaliero della versione di test. Potrai riprovare domani.');
           return; // Non lanciare l'eccezione generica

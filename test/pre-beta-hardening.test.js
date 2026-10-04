@@ -10,7 +10,7 @@ require('./helpers/offline');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pre-beta-'));
 Object.assign(process.env, {
   TEST_DB_PATH: path.join(tmp, 'isolated.sqlite'), NODE_ENV: 'test', PORT: '34741',
-  TEST_MODE: 'true', TEST_DAILY_EXTRACTION_LIMIT: '50', MAX_PAGES_PER_FILE: '20',
+  TEST_MODE: 'true', TEST_DAILY_EXTRACTION_LIMIT: '50', TEST_GLOBAL_DAILY_EXTRACTION_LIMIT: '500', MAX_PAGES_PER_FILE: '20',
   SESSION_SECRET: 'pre-beta-test-only-secret-at-least-32-characters',
   ANTHROPIC_API_KEY: '', RESEND_API_KEY: '', STRIPE_SECRET_KEY: '',
   LAUNCH_MODE: 'waitlist', RATE_LIMIT_MAX_REQUESTS: '100000',

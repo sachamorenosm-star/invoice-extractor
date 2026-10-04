@@ -42,7 +42,7 @@ async function child(mode) {
   const prod = mode === 'prod';
   Object.assign(process.env, {
     TEST_DB_PATH: path.join(tmpDir, 'auth.sqlite'), PORT: String(PORT), FRONTEND_URL: `http://127.0.0.1:${PORT}`,
-    NODE_ENV: prod ? 'production' : 'development', LAUNCH_MODE: 'waitlist', TEST_MODE: 'true', TEST_DAILY_EXTRACTION_LIMIT: '1000',
+    NODE_ENV: prod ? 'production' : 'development', LAUNCH_MODE: 'waitlist', TEST_MODE: 'true', TEST_DAILY_EXTRACTION_LIMIT: '1000', TEST_GLOBAL_DAILY_EXTRACTION_LIMIT: '500',
     RATE_LIMIT_MAX_REQUESTS: '100000', SESSION_SECRET: mode === 'devnosecret' ? '' : 'auth-log-test-secret-auth-log-test-secret-12345',
     ANTHROPIC_API_KEY: '', STRIPE_SECRET_KEY: '', STRIPE_WEBHOOK_SECRET: '',
     RESEND_API_KEY: mode === 'mock' ? 're_mock_not_a_real_key_000000' : '',

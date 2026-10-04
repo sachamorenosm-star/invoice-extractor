@@ -15,6 +15,15 @@ function getMaxPagesPerFile(raw = process.env.MAX_PAGES_PER_FILE) {
   return Number(raw);
 }
 
+function getTestGlobalDailyLimit(env = process.env) {
+  if (!parseTestMode(env.TEST_MODE)) return null;
+  const raw = env.TEST_GLOBAL_DAILY_EXTRACTION_LIMIT;
+  if (typeof raw !== 'string' || !/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
+    throw new Error('Invalid TEST_GLOBAL_DAILY_EXTRACTION_LIMIT: TEST_MODE requires an explicit positive integer.');
+  }
+  return Number(raw);
+}
+
 function startupSummary(env, dailyLimit, uploadLimits) {
   const configured = (value) => !!value && !/x{4,}|replace-with/i.test(value);
   return {
@@ -31,4 +40,4 @@ function startupSummary(env, dailyLimit, uploadLimits) {
   };
 }
 
-module.exports = { parseTestMode, getMaxPagesPerFile, startupSummary };
+module.exports = { parseTestMode, getMaxPagesPerFile, getTestGlobalDailyLimit, startupSummary };

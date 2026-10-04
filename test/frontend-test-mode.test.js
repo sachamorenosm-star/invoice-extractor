@@ -21,6 +21,7 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'frontend-test-'));
 process.env.TEST_DB_PATH = path.join(tmpDir, 'test.sqlite');
 process.env.PORT = '34700';
 process.env.NODE_ENV = 'test';
+process.env.TEST_GLOBAL_DAILY_EXTRACTION_LIMIT = '500';
 process.env.LAUNCH_MODE = 'waitlist';
 process.env.SESSION_SECRET = 'test-secret-32-characters-minimum-xxx';
 

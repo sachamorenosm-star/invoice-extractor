@@ -28,7 +28,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'private-beta-auth-'));
 const port = 34742;
 const allowed = 'tester@example.test,existing@example.test,new@example.test,failure@example.test,resolved@example.test,rate@example.test,concurrent@example.test';
 Object.assign(process.env, {
-  NODE_ENV: 'production', TEST_MODE: 'true', PORT: String(port),
+  NODE_ENV: 'production', TEST_MODE: 'true', TEST_GLOBAL_DAILY_EXTRACTION_LIMIT: '500', PORT: String(port),
   FRONTEND_URL: `http://127.0.0.1:${port}`, TEST_DB_PATH: path.join(tmp, 'auth.sqlite'),
   SESSION_SECRET: 'private-beta-synthetic-session-secret-32-plus',
   RESEND_API_KEY: mode === 'unconfigured' ? '' : 're_synthetic_mock_only_key',

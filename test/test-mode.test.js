@@ -35,6 +35,7 @@ process.env.SESSION_SECRET = 'test-only-session-secret-32-characters-minimum-xx'
 process.env.PORT = '34589';
 process.env.TEST_MODE = 'true';
 process.env.TEST_DAILY_EXTRACTION_LIMIT = '50';
+process.env.TEST_GLOBAL_DAILY_EXTRACTION_LIMIT = '500'; // Isolated regression ceiling, not a production recommendation.
 // Stripe/Resend/Anthropic keys intentionally left unset: no live calls are
 // possible even if something unexpected tried to reach them.
 

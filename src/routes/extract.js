@@ -72,6 +72,7 @@ router.post(
     // fallimenti). Usato dalla rete di sicurezza nel catch per non perdere
     // mai quota riservata in caso di errore imprevisto.
     let testQuotaSettled = false;
+    let pagesToRelease = totalPages;
 
     try {
       if (!req.files || req.files.length === 0) {
@@ -127,6 +128,7 @@ router.post(
           // garbage collector subito dopo l'invio ad Anthropic.
         }),
       );
+      pagesToRelease = resultsPerFile.filter((r) => r.failed).reduce((sum, r) => sum + r.pages, 0);
       const results = resultsPerFile.flatMap((r) => r.records);
       const truncatedFiles = resultsPerFile.filter((r) => r.truncated);
       const failures = resultsPerFile.filter((r) => r.failed);
@@ -148,7 +150,7 @@ router.post(
           .filter((r) => r.failed)
           .reduce((sum, r) => sum + r.pages, 0);
         if (failedPages > 0) {
-          releaseTestDailyQuota(userId, failedPages);
+          releaseTestDailyQuota(userId, failedPages, req.testQuotaReservation.dateKey);
         }
         testQuotaSettled = true;
       } else {
@@ -181,12 +183,11 @@ router.post(
     } catch (err) {
       // Rete di sicurezza: se un errore imprevisto interrompe la richiesta
       // DOPO la riserva atomica TEST_MODE ma prima che le pagine siano state
-      // "sistemate" (mantenute o rilasciate), rilasciamo l'intera quota
-      // riservata per non perderla permanentemente. decrementTestUsage ha
-      // già un floor a zero, quindi un rilascio ridondante non può mai
-      // portare il contatore sotto zero.
+      // "sistemate", rilasciamo solo il lavoro fallito, sul giorno della
+      // riserva. Il lavoro già riuscito resta consumato anche se fallisce
+      // una fase successiva di costruzione della risposta.
       if (isTestMode && !testQuotaSettled) {
-        releaseTestDailyQuota(userId, totalPages);
+        releaseTestDailyQuota(userId, pagesToRelease, req.testQuotaReservation.dateKey);
       }
       next(err);
     }

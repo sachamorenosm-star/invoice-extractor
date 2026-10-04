@@ -134,7 +134,21 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS global_test_usage (
+    date_key TEXT PRIMARY KEY,
+    pages_used INTEGER NOT NULL DEFAULT 0 CHECK (pages_used >= 0),
+    created_at INTEGER NOT NULL
+  );
+`);
+
 const statements = {
+  getGlobalTestUsage: db.prepare('SELECT pages_used FROM global_test_usage WHERE date_key = ?'),
+  upsertGlobalTestUsage: db.prepare(`
+    INSERT INTO global_test_usage(date_key, pages_used, created_at) VALUES (?, ?, ?)
+    ON CONFLICT(date_key) DO UPDATE SET pages_used = pages_used + excluded.pages_used
+  `),
+  releaseGlobalTestUsage: db.prepare('UPDATE global_test_usage SET pages_used = MAX(0, pages_used - ?) WHERE date_key = ?'),
   getUser: db.prepare('SELECT * FROM users WHERE user_id = ?'),
   getUserByCustomerId: db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?'),
   getUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
@@ -253,24 +267,43 @@ function getTestUsage(userId, dateKey) {
   return row ? row.pages_used : 0;
 }
 
-function atomicReserveTestUsage(userId, dateKey, count, limit) {
+function getGlobalTestUsage(dateKey) {
+  return statements.getGlobalTestUsage.get(dateKey)?.pages_used || 0;
+}
+
+function atomicReserveTestUsage(userId, dateKey, count, limit, globalLimit) {
+  if (!Number.isSafeInteger(count) || count < 0 || !Number.isSafeInteger(globalLimit) || globalLimit <= 0) {
+    throw new Error('Invalid beta quota reservation');
+  }
   const transaction = db.transaction(() => {
-    statements.insertTestUsageIfNotExists.run({ user_id: userId, date_key: dateKey, created_at: Date.now() });
     const current = statements.getTestUsage.get(userId, dateKey);
     const used = current ? current.pages_used : 0;
+    const globalUsed = getGlobalTestUsage(dateKey);
 
     // Atomic check: if adding count would exceed limit, reject reservation
-    if (used + count > limit) {
-      return { success: false, used };
+    if (limit <= 0 || count > limit - used) {
+      return { success: false, reason: 'user', used, dateKey };
+    }
+    if (count > globalLimit - globalUsed) {
+      return { success: false, reason: 'global', used, globalUsed, globalLimit, dateKey };
     }
 
     // Atomic increment: reserve the pages
     statements.upsertTestUsage.run({ user_id: userId, date_key: dateKey, pages_used: count, created_at: Date.now() });
+    statements.upsertGlobalTestUsage.run(dateKey, count, Date.now());
 
-    return { success: true, used: used + count };
+    return { success: true, used: used + count, globalUsed: globalUsed + count, dateKey };
   });
 
-  return transaction();
+  return transaction.immediate();
+}
+
+function releaseTestUsage(userId, dateKey, count) {
+  if (!Number.isSafeInteger(count) || count < 0) throw new Error('Invalid beta quota release');
+  db.transaction(() => {
+    decrementTestUsage(userId, dateKey, count);
+    statements.releaseGlobalTestUsage.run(count, dateKey);
+  }).immediate();
 }
 
 function incrementTestUsage(userId, dateKey, count) {
@@ -305,6 +338,8 @@ module.exports = {
   insertFeedbackSignal,
   getTestUsage,
   atomicReserveTestUsage,
+  getGlobalTestUsage,
+  releaseTestUsage,
   incrementTestUsage,
   decrementTestUsage,
 };

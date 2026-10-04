@@ -1,4 +1,4 @@
-const { canScan, getPlanStatus, getTestDailyStatus, reserveTestDailyQuota } = require('../services/stripeService');
+const { canScan, getPlanStatus, getTestDailyStatus, reserveTestDailyQuotaResult } = require('../services/stripeService');
 const authService = require('../services/authService');
 
 const USER_ID_PATTERN = /^usr_[a-zA-Z0-9-]{8,64}$/;
@@ -51,8 +51,21 @@ function enforceScanLimit(countFn = 1) {
         // finestra di race TOCTOU che questa riserva elimina: check e
         // incremento avvengono in un'unica transazione DB, PRIMA di
         // chiamare Anthropic. Non usare più canScan per TEST_MODE.
-        const reserved = reserveTestDailyQuota(userId, count);
-        if (!reserved) {
+        const reserved = reserveTestDailyQuotaResult(userId, count);
+        if (!reserved.success) {
+          if (reserved.reason === 'global') {
+            console.warn('[test-mode] global quota blocked', JSON.stringify({
+              request_id: req.requestId,
+              date_key: reserved.dateKey,
+              requested_pages: count,
+              global_pages_used: reserved.globalUsed,
+              global_limit: reserved.globalLimit,
+            }));
+            return res.status(429).json({
+              error: 'Il limite giornaliero della beta è stato raggiunto. Riprova domani.',
+              code: 'TEST_GLOBAL_DAILY_LIMIT_REACHED',
+            });
+          }
           const { limit, used, resetAt } = getTestDailyStatus(userId);
           return res.status(429).json({
             error: 'Limite di estrazione di test raggiunto. Riprova domani.',
@@ -62,6 +75,7 @@ function enforceScanLimit(countFn = 1) {
             resetAt,
           });
         }
+        req.testQuotaReservation = reserved;
         return next();
       }
 

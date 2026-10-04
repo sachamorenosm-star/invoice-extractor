@@ -210,19 +210,20 @@ function recordScans(userId, count = 1) {
   persistUser(userId, user);
 }
 
-function reserveTestDailyQuota(userId, count = 1) {
+// Both counters are authorized by the same SQLite write transaction.
+function reserveTestDailyQuotaResult(userId, count = 1) {
   const limit = getTestDailyLimit();
-  if (limit <= 0) return false;
-
   const dateKey = getTodayKey();
-  const result = database.atomicReserveTestUsage(userId, dateKey, count, limit);
-
-  return result.success;
+  const globalLimit = require('../utils/config').getTestGlobalDailyLimit();
+  return database.atomicReserveTestUsage(userId, dateKey, count, limit, globalLimit);
 }
 
-function releaseTestDailyQuota(userId, count = 1) {
-  const dateKey = getTodayKey();
-  database.decrementTestUsage(userId, dateKey, count);
+function reserveTestDailyQuota(userId, count = 1) {
+  return reserveTestDailyQuotaResult(userId, count).success;
+}
+
+function releaseTestDailyQuota(userId, count = 1, dateKey = getTodayKey()) {
+  database.releaseTestUsage(userId, dateKey, count);
 }
 
 function activateSubscription(userId, stripeCustomerId, stripeSubscriptionId, tier) {
@@ -399,5 +400,6 @@ module.exports = {
   getTestDailyLimit,
   getTestDailyStatus,
   reserveTestDailyQuota,
+  reserveTestDailyQuotaResult,
   releaseTestDailyQuota,
 };
