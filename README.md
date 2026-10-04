@@ -142,6 +142,45 @@ vercel --prod
 | `MAX_FILE_SIZE_MB`, `MAX_FILES_PER_REQUEST` | Limiti di upload (facoltativi, hanno default) |
 | `FREE_PLAN_MONTHLY_SCANS`, `PRO_PLAN_MONTHLY_SCANS` | Limiti di scansione per piano |
 
+## SQLite Backup / Restore
+
+Il database applicativo e' `data/invoice-extractor.sqlite`, risolto dalla root
+del progetto; `TEST_DB_PATH` serve solo ai test isolati. Il server mantiene
+la connessione aperta e abilita WAL. Copiare il solo `.sqlite` mentre il
+server e' attivo puo' perdere scritture committate ancora nel WAL.
+Questi comandi usano l'API SQLite di backup di `better-sqlite3`, senza
+avviare il server o chiamare provider. Ogni copia viene resa autonoma,
+verificata con `PRAGMA integrity_check` e controllata per le cinque tabelle
+applicative. Il database sorgente viene aperto in sola lettura.
+
+```bash
+npm run db:backup
+# Oppure sorgente esplicita e directory separata:
+npm run db:backup -- --source /persistent/invoice-extractor.sqlite --backup-dir /persistent/backups
+npm run db:verify-backup -- --source /persistent/backups/invoice-extractor-TIMESTAMP-UUID.sqlite
+# Ripristino esplicito SOLO su un nuovo file, in una directory gia' esistente:
+npm run db:restore -- --source /persistent/backups/invoice-extractor-TIMESTAMP-UUID.sqlite --destination /temporary/restored.sqlite
+npm run db:verify-backup -- --source /temporary/restored.sqlite
+```
+
+`BACKUP_DIR` ha default `./data/backups`; i nomi contengono timestamp UTC e
+UUID, senza dati utente. File esistenti e destinazioni coincidenti con la
+sorgente o il database applicativo vengono rifiutati. Non esiste un comando
+di ripristino in produzione: un eventuale cambio del database attivo richiede
+una procedura operativa separata, a servizio fermo, dopo verifica del restore.
+I backup contengono dati account e token: mantenerli privati (nuovi file con
+permessi 0600 dove supportati), con accessi e conservazione controllati.
+
+Per la beta privata: backup almeno giornaliero e prima di modifiche operative,
+con prova periodica di ripristino. Non viene installato alcuno scheduler.
+Su Render il database richiede un disco persistente e backup consapevoli di
+SQLite. Una copia sullo stesso disco protegge da alcune corruzioni o modifiche
+accidentali, ma non dalla perdita del disco. La destinazione esterna/off-disk
+e la relativa conservazione vanno scelte prima dell'uso a lungo termine;
+nessun servizio cloud e' configurato qui e gli snapshot Render non sono stati
+verificati come backup del database. `data/` resta esclusa da Git; se si usa
+un'altra directory di backup, mantenerla fuori dal repository.
+
 ## Note GDPR
 
 Questa applicazione **non salva mai** i file caricati dagli utenti su

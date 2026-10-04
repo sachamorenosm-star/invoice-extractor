@@ -7,7 +7,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "build:css": "node build-css.js"
+    "build:css": "node build-css.js",
+    "db:backup": "node scripts/sqlite-backup.js backup",
+    "db:verify-backup": "node scripts/sqlite-backup.js verify",
+    "db:restore": "node scripts/sqlite-backup.js restore"
   },
   "license": "UNLICENSED",
   "private": true,
