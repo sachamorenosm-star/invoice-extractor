@@ -1,5 +1,5 @@
 ---
-name: security-review
+name: invoiceextract-security-review
 description: Non-destructive security review of the InvoiceExtract codebase (auth, magic links, uploads, parsing, logging privacy, config). Use when asked for a security review, audit, or hardening check of the repo — not for live pentesting.
 ---
 
