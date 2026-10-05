@@ -33,6 +33,9 @@
     maxSizeLabel: document.getElementById('max-size-label'),
     toast: document.getElementById('toast'),
     themeToggle: document.getElementById('theme-toggle'),
+    langSelect: document.getElementById('lang-select'),
+    countrySelect: document.getElementById('country-select'),
+    countryStatus: document.getElementById('country-status'),
 
     imagePreviewModal: document.getElementById('image-preview-modal'),
     imagePreviewCanvas: document.getElementById('image-preview-canvas'),
@@ -92,6 +95,113 @@
     manageSubscriptionBtn: document.getElementById('manage-subscription-btn'),
     accountLogoutBtn: document.getElementById('account-logout-btn'),
   };
+
+  // ---------------------------------------------------------------
+  // i18n + paese del documento
+  // Lingua UI e paese del documento sono indipendenti (vedi intl.js):
+  // cambiare l'una non cambia l'altra né la valuta, che resta un dato
+  // del documento. Il paese NON viene dedotto da IP o lingua.
+  // ---------------------------------------------------------------
+  const FALLBACK_COUNTRIES = [
+    { code: 'IT', displayName: 'Italia', defaultLocale: 'it', defaultCurrency: 'EUR', taxLabel: 'IVA', supportStatus: 'SUPPORTED' },
+  ];
+  let intlCountries = FALLBACK_COUNTRIES;
+  let intl = createIntl(intlCountries);
+
+  function safeLocalStorage() {
+    try { return window.localStorage; } catch (e) { return null; }
+  }
+
+  function createIntl(countries) {
+    return window.IntlState.createIntlState({
+      storage: safeLocalStorage(),
+      pathname: window.location.pathname,
+      countries,
+      defaultCountryCode: 'IT',
+    });
+  }
+
+  function renderCountryOptions() {
+    if (!els.countrySelect) return;
+    const current = intl.getCountry();
+    els.countrySelect.innerHTML = '';
+    intl.getCountryOptions().forEach((o) => {
+      const opt = document.createElement('option');
+      opt.value = o.code;
+      opt.textContent = o.label;
+      opt.disabled = o.disabled;
+      els.countrySelect.appendChild(opt);
+    });
+    els.countrySelect.value = current;
+  }
+
+  function renderCountryStatus() {
+    if (!els.countryStatus) return;
+    const country = intlCountries.find((c) => c.code === intl.getCountry());
+    if (!country) { els.countryStatus.textContent = ''; return; }
+    const parts = [];
+    if (country.supportStatus === 'BETA') {
+      parts.push(intl.t('country.betaNotice', { country: country.displayName }));
+    }
+    parts.push(intl.t('country.currencyHint', { currency: intl.getExpectedCurrency() }));
+    els.countryStatus.textContent = parts.join(' ');
+  }
+
+  function applyTranslations() {
+    const locale = intl.getLocale();
+    // Il contenuto principale è tradotto solo per le locale SEO-exposed:
+    // per le altre lang/title/description restano quelli serviti (italiani).
+    if (window.I18n.isSeoExposed(locale)) {
+      document.documentElement.lang = locale;
+      document.title = intl.t('meta.title');
+      const desc = document.querySelector('meta[name="description"]');
+      if (desc) desc.setAttribute('content', intl.t('meta.description'));
+    }
+    document.querySelectorAll('[data-i18n]').forEach((el) => {
+      el.textContent = intl.t(el.getAttribute('data-i18n'));
+    });
+    if (els.langSelect) {
+      els.langSelect.value = locale;
+      els.langSelect.setAttribute('aria-label', intl.t('lang.label'));
+    }
+    renderCountryOptions();
+    renderCountryStatus();
+  }
+
+  function initIntl() {
+    if (els.langSelect) {
+      els.langSelect.addEventListener('change', () => {
+        if (!intl.setLocale(els.langSelect.value)) return;
+        // Se la pagina è su un URL localizzato, allinea l'URL alla lingua
+        // scelta (solo history.replaceState: nessun reload). Il paese non cambia.
+        if (window.I18n.localeFromPath(window.location.pathname)) {
+          try { window.history.replaceState(null, '', `/${intl.getLocale()}/${window.location.hash || ''}`); } catch (e) { /* non bloccante */ }
+        }
+        applyTranslations();
+      });
+    }
+    if (els.countrySelect) {
+      els.countrySelect.addEventListener('change', () => {
+        if (!intl.setCountry(els.countrySelect.value)) {
+          els.countrySelect.value = intl.getCountry();
+          return;
+        }
+        renderCountryStatus(); // la lingua UI non cambia
+      });
+    }
+    applyTranslations();
+  }
+
+  function applyCountriesFromConfig(countries) {
+    if (!Array.isArray(countries) || !countries.length) return;
+    const locale = intl.getLocale();
+    intlCountries = countries;
+    intl = createIntl(countries);
+    intl.setLocale(locale); // la lingua scelta non cambia con la config
+    applyTranslations();
+  }
+
+  initIntl();
 
   // ---------------------------------------------------------------
   // Tema chiaro/scuro
@@ -416,6 +526,8 @@
 
     const formData = new FormData();
     state.files.forEach((f) => formData.append('invoices', f));
+    // Paese del documento scelto dall'utente (mai dedotto da IP/lingua).
+    formData.append('country_code', intl.getCountry());
 
     try {
       const res = await fetch('/api/extract', {
@@ -1096,6 +1208,7 @@
         }
         launchMode = data.launchMode === 'live' ? 'live' : 'waitlist';
         applyLaunchModeUi();
+        applyCountriesFromConfig(data.countries);
 
         // TEST_MODE beta UX: carica la configurazione della versione di test
         if (data.testMode === true) {

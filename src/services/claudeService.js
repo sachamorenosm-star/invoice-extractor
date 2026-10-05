@@ -93,8 +93,15 @@ ISTRUZIONI CRITICHE (da seguire senza eccezioni):
  * restituisce un ARRAY di record contabili strutturati: uno per ciascun
  * documento distinto che Claude identifica nel file (un file può contenere
  * più fatture/ricevute, es. una scansione cumulativa multipagina).
+ *
+ * options.countryCode: paese del documento (ISO 3166-1 alpha-2, già validato
+ * dalla route). Viene riportato su ogni record come `country_code`. Il
+ * prompt/schema NON lo usano ancora: punto di integrazione futuro = il testo
+ * utente della richiesta (sotto), per es. aggiungendo un suggerimento sul
+ * paese, solo dopo un benchmark per paese. Non influenza la valuta.
  */
-async function extractInvoiceData(fileBuffer, mimetype, filename) {
+async function extractInvoiceData(fileBuffer, mimetype, filename, options = {}) {
+  const countryCode = options && options.countryCode ? options.countryCode : null;
   if (!anthropic) {
     throw Object.assign(new Error('Chiave API Anthropic non configurata sul server.'), { status: 500 });
   }
@@ -166,6 +173,7 @@ async function extractInvoiceData(fileBuffer, mimetype, filename) {
   const records = toolUseBlocks.map((block, index) => ({
     ...block.input,
     source_file: multipleDocuments ? `${filename} (documento ${index + 1})` : filename,
+    ...(countryCode ? { country_code: countryCode } : {}),
   }));
 
   return { records, truncated, extractedCount: toolUseBlocks.length };
