@@ -30,7 +30,7 @@
 
     function selectable(code) {
       var c = byCode[code];
-      return !!c && c.supportStatus !== 'COMING_SOON';
+      return !!c && c.enabledForExtraction === true;
     }
 
     // Lingua: URL localizzato > preferenza salvata > default. Mai dal paese.
@@ -78,8 +78,9 @@
           return {
             code: c.code,
             status: c.supportStatus,
-            disabled: c.supportStatus === 'COMING_SOON',
-            label: c.displayName + ' — ' + I18n.t(locale, 'status.' + c.supportStatus)
+            enabled: c.enabledForExtraction === true,
+            disabled: c.enabledForExtraction !== true,
+            label: c.displayName + ' — ' + I18n.t(locale, c.enabledForExtraction === true ? 'status.' + c.supportStatus : 'status.' + c.supportStatus + '.notEnabled')
           };
         });
       }

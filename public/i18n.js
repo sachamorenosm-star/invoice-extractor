@@ -15,6 +15,11 @@
   var SUPPORTED_LOCALES = ['it', 'en', 'fr', 'de', 'es', 'pt'];
   var DEFAULT_LOCALE = 'it';
   var FALLBACK_LOCALE = 'it';
+  // Locale tecnicamente disponibili (UI) != locale esposte alla SEO. Una
+  // locale entra in SEO_EXPOSED_LOCALES solo quando il contenuto principale
+  // della landing/app è realmente tradotto (oggi solo it: le stringhe legacy
+  // della pagina sono italiane). Non aggiungere una locale senza traduzione.
+  var SEO_EXPOSED_LOCALES = ['it'];
   var LOCALE_NAMES = { it: 'Italiano', en: 'English', fr: 'Français', de: 'Deutsch', es: 'Español', pt: 'Português' };
   var OG_LOCALES = { it: 'it_IT', en: 'en_US', fr: 'fr_FR', de: 'de_DE', es: 'es_ES', pt: 'pt_PT' };
 
@@ -29,6 +34,8 @@
       'status.SUPPORTED': 'Supportato',
       'status.BETA': 'Beta',
       'status.COMING_SOON': 'In arrivo',
+      'status.BETA.notEnabled': 'Beta – prossimamente disponibile',
+      'status.COMING_SOON.notEnabled': 'Prossimamente disponibile',
       'country.betaNotice': 'Supporto beta per {country}: non ancora verificato con benchmark. Controlla sempre i risultati.',
       'country.comingSoonNotice': '{country} non è ancora disponibile.'
     },
@@ -42,6 +49,8 @@
       'status.SUPPORTED': 'Supported',
       'status.BETA': 'Beta',
       'status.COMING_SOON': 'Coming soon',
+      'status.BETA.notEnabled': 'Beta – coming soon',
+      'status.COMING_SOON.notEnabled': 'Coming soon',
       'country.betaNotice': 'Beta support for {country}: not yet verified by benchmark. Always check the results.',
       'country.comingSoonNotice': '{country} is not available yet.'
     },
@@ -55,6 +64,8 @@
       'status.SUPPORTED': 'Pris en charge',
       'status.BETA': 'Bêta',
       'status.COMING_SOON': 'Bientôt disponible',
+      'status.BETA.notEnabled': 'Bêta – bientôt disponible',
+      'status.COMING_SOON.notEnabled': 'Bientôt disponible',
       'country.betaNotice': "Prise en charge bêta pour {country} : pas encore validée par benchmark. Vérifiez toujours les résultats.",
       'country.comingSoonNotice': "{country} n'est pas encore disponible."
     },
@@ -68,6 +79,8 @@
       'status.SUPPORTED': 'Unterstützt',
       'status.BETA': 'Beta',
       'status.COMING_SOON': 'Demnächst',
+      'status.BETA.notEnabled': 'Beta – demnächst verfügbar',
+      'status.COMING_SOON.notEnabled': 'Demnächst verfügbar',
       'country.betaNotice': 'Beta-Unterstützung für {country}: noch nicht per Benchmark geprüft. Ergebnisse stets kontrollieren.',
       'country.comingSoonNotice': '{country} ist noch nicht verfügbar.'
     },
@@ -81,6 +94,8 @@
       'status.SUPPORTED': 'Compatible',
       'status.BETA': 'Beta',
       'status.COMING_SOON': 'Próximamente',
+      'status.BETA.notEnabled': 'Beta – próximamente disponible',
+      'status.COMING_SOON.notEnabled': 'Próximamente disponible',
       'country.betaNotice': 'Soporte beta para {country}: aún sin verificar con benchmark. Revisa siempre los resultados.',
       'country.comingSoonNotice': '{country} aún no está disponible.'
     },
@@ -94,6 +109,8 @@
       'status.SUPPORTED': 'Suportado',
       'status.BETA': 'Beta',
       'status.COMING_SOON': 'Em breve',
+      'status.BETA.notEnabled': 'Beta – em breve disponível',
+      'status.COMING_SOON.notEnabled': 'Em breve disponível',
       'country.betaNotice': 'Suporte beta para {country}: ainda não verificado por benchmark. Confira sempre os resultados.',
       'country.comingSoonNotice': '{country} ainda não está disponível.'
     }
@@ -101,6 +118,10 @@
 
   function isSupportedLocale(code) {
     return typeof code === 'string' && SUPPORTED_LOCALES.indexOf(code.toLowerCase()) !== -1;
+  }
+
+  function isSeoExposed(code) {
+    return typeof code === 'string' && SEO_EXPOSED_LOCALES.indexOf(code) !== -1;
   }
 
   function normalizeLocale(code) {
@@ -141,12 +162,14 @@
 
   return {
     SUPPORTED_LOCALES: SUPPORTED_LOCALES,
+    SEO_EXPOSED_LOCALES: SEO_EXPOSED_LOCALES,
     DEFAULT_LOCALE: DEFAULT_LOCALE,
     FALLBACK_LOCALE: FALLBACK_LOCALE,
     LOCALE_NAMES: LOCALE_NAMES,
     OG_LOCALES: OG_LOCALES,
     DICTIONARIES: DICTIONARIES,
     isSupportedLocale: isSupportedLocale,
+    isSeoExposed: isSeoExposed,
     normalizeLocale: normalizeLocale,
     resolveLocale: resolveLocale,
     localeFromPath: localeFromPath,

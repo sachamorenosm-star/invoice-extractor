@@ -31,15 +31,29 @@ function localizedPath(locale) {
   return `/${locale}/`;
 }
 
+// Solo le locale realmente localizzate (SEO_EXPOSED_LOCALES) hanno hreflang.
 // x-default punta alla versione nella lingua di default.
 function buildAlternates(baseUrl) {
   const base = trimBase(baseUrl);
-  const alternates = I18n.SUPPORTED_LOCALES.map((l) => ({ hreflang: l, href: base + localizedPath(l) }));
+  const alternates = I18n.SEO_EXPOSED_LOCALES.map((l) => ({ hreflang: l, href: base + localizedPath(l) }));
   alternates.push({ hreflang: 'x-default', href: base + localizedPath(I18n.DEFAULT_LOCALE) });
   return alternates;
 }
 
+// Locale tecnicamente disponibile ma NON esposta alla SEO: contenuto principale
+// ancora in italiano. Nessuna dichiarazione di lingua diversa, canonical sulla
+// versione di default, noindex e nessun hreflang.
+function buildHiddenLocaleHeadTags(baseUrl) {
+  const base = trimBase(baseUrl);
+  const def = I18n.DEFAULT_LOCALE;
+  return [
+    '<meta name="robots" content="noindex,follow" />',
+    `<link rel="canonical" href="${escapeAttr(base + localizedPath(def))}" />`,
+  ].join('\n  ');
+}
+
 function buildHeadTags(locale, baseUrl) {
+  if (!I18n.isSeoExposed(locale)) return buildHiddenLocaleHeadTags(baseUrl);
   const base = trimBase(baseUrl);
   const title = I18n.t(locale, 'meta.title');
   const description = I18n.t(locale, 'meta.description');
@@ -55,14 +69,17 @@ function buildHeadTags(locale, baseUrl) {
 }
 
 function renderLocalizedIndex(locale, baseUrl) {
-  const loc = I18n.resolveLocale(locale);
+  const requested = I18n.resolveLocale(locale);
+  // Il documento servito è italiano finché la locale non è esposta: lang,
+  // title e description restano coerenti col contenuto reale.
+  const loc = I18n.isSeoExposed(requested) ? requested : I18n.DEFAULT_LOCALE;
   const title = escapeAttr(I18n.t(loc, 'meta.title'));
   const description = escapeAttr(I18n.t(loc, 'meta.description'));
   return loadIndexHtml()
     .replace(/<html lang="[^"]*">/, `<html lang="${loc}">`)
     .replace(/<title>[\s\S]*?<\/title>/, `<title>${title}</title>`)
     .replace(/<meta name="description" content="[^"]*"\s*\/?>/, `<meta name="description" content="${description}" />`)
-    .replace('</head>', `  ${buildHeadTags(loc, baseUrl)}\n</head>`);
+    .replace('</head>', `  ${buildHeadTags(requested, baseUrl)}\n</head>`);
 }
 
 module.exports = { renderLocalizedIndex, buildAlternates, buildHeadTags, localizedPath };

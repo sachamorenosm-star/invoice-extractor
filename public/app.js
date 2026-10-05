@@ -149,10 +149,14 @@
 
   function applyTranslations() {
     const locale = intl.getLocale();
-    document.documentElement.lang = locale;
-    document.title = intl.t('meta.title');
-    const desc = document.querySelector('meta[name="description"]');
-    if (desc) desc.setAttribute('content', intl.t('meta.description'));
+    // Il contenuto principale è tradotto solo per le locale SEO-exposed:
+    // per le altre lang/title/description restano quelli serviti (italiani).
+    if (window.I18n.isSeoExposed(locale)) {
+      document.documentElement.lang = locale;
+      document.title = intl.t('meta.title');
+      const desc = document.querySelector('meta[name="description"]');
+      if (desc) desc.setAttribute('content', intl.t('meta.description'));
+    }
     document.querySelectorAll('[data-i18n]').forEach((el) => {
       el.textContent = intl.t(el.getAttribute('data-i18n'));
     });

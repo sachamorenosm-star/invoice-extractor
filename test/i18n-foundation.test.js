@@ -37,6 +37,9 @@ function memoryStorage(initial = {}) {
   };
 }
 const publicCountries = () => countries.listCountries();
+// Config sintetica con TUTTI i paesi abilitati: serve solo a provare che lo
+// stato client (lingua vs paese) è indipendente a prescindere dal gating.
+const allEnabledCountries = () => countries.listCountries().map((c) => ({ ...c, enabledForExtraction: true }));
 const newIntl = (opts = {}) => createIntlState({
   storage: memoryStorage(), pathname: '/', countries: publicCountries(), defaultCountryCode: 'IT', ...opts,
 });
@@ -70,7 +73,28 @@ test('support status: Italy SUPPORTED, others never fully supported before bench
   }
   assert.strictEqual(countries.getCountry('US').supportStatus, 'COMING_SOON');
   assert.strictEqual(countries.isCountrySelectable('US'), false);
-  assert.strictEqual(countries.isCountrySelectable('DE'), true);
+  assert.strictEqual(countries.isCountrySelectable('DE'), false);
+});
+
+test('supportStatus and enabledForExtraction table (IT only enabled)', () => {
+  const expected = {
+    IT: ['SUPPORTED', true], FR: ['BETA', false], DE: ['BETA', false],
+    ES: ['BETA', false], PT: ['BETA', false], US: ['COMING_SOON', false],
+  };
+  for (const [code, [status, enabled]] of Object.entries(expected)) {
+    const c = countries.getCountry(code);
+    assert.strictEqual(c.supportStatus, status, `${code} supportStatus`);
+    assert.strictEqual(c.enabledForExtraction, enabled, `${code} enabledForExtraction`);
+    assert.strictEqual(countries.isCountryEnabledForExtraction(code), enabled, code);
+  }
+  assert.strictEqual(countries.isCountryEnabledForExtraction('XX'), false);
+  assert.strictEqual(countries.isCountryEnabledForExtraction(undefined), false);
+  // fail-closed: valori non strettamente true non abilitano
+  for (const v of ['true', 1, undefined, null]) {
+    const saved = countries.COUNTRIES.IT;
+    // COUNTRIES è congelato: verifica la regola sul lookup tramite copia
+    assert.strictEqual({ ...saved, enabledForExtraction: v }.enabledForExtraction === true, false, String(v));
+  }
 });
 
 test('country lookup is safe and case-insensitive', () => {
@@ -80,12 +104,17 @@ test('country lookup is safe and case-insensitive', () => {
   }
 });
 
-test('resolveRequestCountry: default IT, validation, coming soon rejected', () => {
+test('resolveRequestCountry: default IT, validation, non-enabled rejected', () => {
   assert.deepStrictEqual(countries.resolveRequestCountry(undefined), { ok: true, countryCode: 'IT' });
   assert.deepStrictEqual(countries.resolveRequestCountry(''), { ok: true, countryCode: 'IT' });
-  assert.deepStrictEqual(countries.resolveRequestCountry('de'), { ok: true, countryCode: 'DE' });
+  assert.deepStrictEqual(countries.resolveRequestCountry('it'), { ok: true, countryCode: 'IT' });
   assert.strictEqual(countries.resolveRequestCountry('XX').code, 'INVALID_COUNTRY_CODE');
-  assert.strictEqual(countries.resolveRequestCountry('US').code, 'COUNTRY_NOT_AVAILABLE');
+  for (const code of ['FR', 'DE', 'ES', 'PT', 'US', 'de']) {
+    const r = countries.resolveRequestCountry(code);
+    assert.strictEqual(r.ok, false, code);
+    assert.strictEqual(r.status, 400, code);
+    assert.strictEqual(r.code, 'COUNTRY_NOT_AVAILABLE', code);
+  }
 });
 
 test('currency is independent from country: only an expected hint', () => {
@@ -155,24 +184,28 @@ test('country selector: options follow country config and status', () => {
   const opts = Object.fromEntries(s.getCountryOptions().map((o) => [o.code, o]));
   assert.strictEqual(Object.keys(opts).length, 6);
   assert.strictEqual(opts.IT.disabled, false);
-  assert.strictEqual(opts.DE.disabled, false);
-  assert.strictEqual(opts.US.disabled, true);
+  for (const code of ['FR', 'DE', 'ES', 'PT', 'US']) assert.strictEqual(opts[code].disabled, true, code);
   assert.ok(opts.IT.label.includes('Supportato'));
-  assert.ok(opts.DE.label.includes('Beta'));
-  assert.ok(opts.US.label.includes('In arrivo'));
-  assert.strictEqual(s.setCountry('US'), false); // coming soon not selectable
+  for (const code of ['FR', 'DE', 'ES', 'PT']) {
+    assert.ok(opts[code].label.includes('Beta') && opts[code].label.includes('prossimamente'), opts[code].label);
+  }
+  assert.ok(opts.US.label.includes('Prossimamente'));
+  for (const code of ['FR', 'DE', 'ES', 'PT', 'US']) {
+    assert.strictEqual(s.setCountry(code), false, code); // non abilitato: non selezionabile
+    assert.strictEqual(s.getCountry(), 'IT');
+  }
   assert.strictEqual(s.getCountry(), 'IT');
   assert.strictEqual(s.setCountry('ZZ'), false);
 });
 
-test('country != language: UI it + document country DE', () => {
+test('country != language: UI it + document country DE (synthetic all-enabled config)', () => {
   const storage = memoryStorage();
-  const s = newIntl({ storage });
+  const s = newIntl({ storage, countries: allEnabledCountries() });
   assert.strictEqual(s.setLocale('it'), true);
   assert.strictEqual(s.setCountry('DE'), true);
   assert.strictEqual(s.getLocale(), 'it');
   assert.strictEqual(s.getCountry(), 'DE');
-  const r = newIntl({ storage }); // after refresh both persist independently
+  const r = newIntl({ storage, countries: allEnabledCountries() }); // after refresh both persist independently
   assert.strictEqual(r.getLocale(), 'it');
   assert.strictEqual(r.getCountry(), 'DE');
 });
@@ -187,7 +220,7 @@ test('country != language: UI en + document country IT', () => {
 test('changing one never changes the other (all combinations)', () => {
   for (const l of I18n.SUPPORTED_LOCALES) {
     for (const code of ['IT', 'FR', 'DE', 'ES', 'PT']) {
-      const s = newIntl();
+      const s = newIntl({ countries: allEnabledCountries() });
       s.setCountry(code);
       s.setLocale(l);
       assert.strictEqual(s.getCountry(), code, `country changed by locale ${l}`);
@@ -203,7 +236,7 @@ test('changing one never changes the other (all combinations)', () => {
 });
 
 test('currency stays independent of both language and country selection', () => {
-  const s = newIntl();
+  const s = newIntl({ countries: allEnabledCountries() });
   s.setCountry('DE');
   const hint = s.getExpectedCurrency();
   s.setLocale('en');
@@ -212,40 +245,62 @@ test('currency stays independent of both language and country selection', () => 
   assert.strictEqual(typeof s.getCountry(), 'string'); // hint is not exposed as country
 });
 
-test('stored COMING_SOON country is ignored (falls back to default)', () => {
-  assert.strictEqual(newIntl({ storage: memoryStorage({ ie_country: 'US' }) }).getCountry(), 'IT');
-});
-
-// --------------------------------------------------------------------- SEO
-test('SEO: per-locale lang, title, description, self canonical', () => {
-  for (const l of I18n.SUPPORTED_LOCALES) {
-    const html = seo.renderLocalizedIndex(l, 'https://example.test');
-    assert.ok(html.includes(`<html lang="${l}">`), l);
-    assert.ok(html.includes(`<title>${I18n.t(l, 'meta.title')}</title>`.replace(/&/g, '&amp;')), l);
-    assert.ok(html.includes(`content="${I18n.t(l, 'meta.description')}"`.replace(/&/g, '&amp;')), l);
-    const canon = html.match(/<link rel="canonical" href="([^"]+)"/g) || [];
-    assert.strictEqual(canon.length, 1, 'exactly one canonical');
-    assert.ok(canon[0].includes(`https://example.test/${l}/`), `canonical self-referencing for ${l}`);
-    assert.strictEqual((html.match(/<meta name="description"/g) || []).length, 1);
+test('stored non-enabled country (US/DE) is ignored (falls back to default)', () => {
+  for (const code of ['US', 'DE', 'FR']) {
+    assert.strictEqual(newIntl({ storage: memoryStorage({ ie_country: code }) }).getCountry(), 'IT', code);
   }
 });
 
-test('SEO: hreflang covers all locales + x-default, reciprocal on every page', () => {
-  const expected = ['it', 'en', 'fr', 'de', 'es', 'pt', 'x-default'];
-  const hrefsFor = (html) => [...html.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"/g)].map((m) => [m[1], m[2]]);
-  let reference = null;
+test('language and country independent with the REAL config: any locale keeps IT', () => {
   for (const l of I18n.SUPPORTED_LOCALES) {
-    const pairs = hrefsFor(seo.renderLocalizedIndex(l, 'https://example.test/'));
-    assert.deepStrictEqual(pairs.map((p) => p[0]), expected);
-    assert.strictEqual(Object.fromEntries(pairs)['x-default'], 'https://example.test/it/');
-    assert.strictEqual(Object.fromEntries(pairs)[l], `https://example.test/${l}/`);
-    if (reference) assert.deepStrictEqual(pairs, reference);
-    reference = pairs;
+    const s = newIntl();
+    s.setLocale(l);
+    assert.strictEqual(s.getCountry(), 'IT', l);
+    assert.strictEqual(s.getLocale(), l);
+  }
+});
+
+// --------------------------------------------------------------------- SEO
+test('SEO: only SEO-exposed locales declare their own lang/canonical/hreflang', () => {
+  assert.deepStrictEqual(I18n.SEO_EXPOSED_LOCALES, ['it']);
+  for (const l of I18n.SUPPORTED_LOCALES) {
+    assert.ok(I18n.isSupportedLocale(l)); // technically available
+    const html = seo.renderLocalizedIndex(l, 'https://example.test');
+    const canon = html.match(/<link rel="canonical" href="([^"]+)"/g) || [];
+    assert.strictEqual(canon.length, 1, 'exactly one canonical');
+    assert.strictEqual((html.match(/<meta name="description"/g) || []).length, 1);
+    assert.strictEqual((html.match(/<meta name="robots"/g) || []).length, I18n.isSeoExposed(l) ? 0 : 1, l);
+    if (I18n.isSeoExposed(l)) {
+      assert.ok(html.includes(`<html lang="${l}">`), l);
+      assert.ok(html.includes(`<title>${I18n.t(l, 'meta.title')}</title>`.replace(/&/g, '&amp;')), l);
+      assert.ok(canon[0].includes(`https://example.test/${l}/`), `self canonical for ${l}`);
+      assert.ok(!/noindex/.test(html), l);
+    } else {
+      // contenuto ancora italiano: nessuna lingua diversa dichiarata
+      assert.ok(html.includes('<html lang="it">'), l);
+      assert.ok(html.includes(`<title>${I18n.t('it', 'meta.title')}</title>`.replace(/&/g, '&amp;')), l);
+      assert.ok(canon[0].includes('https://example.test/it/'), `${l} canonical -> /it/`);
+      assert.ok(/<meta name="robots" content="noindex,follow" \/>/.test(html), l);
+      assert.ok(!/hreflang=/.test(html), `${l} must not emit hreflang`);
+      assert.ok(!html.includes(`og:locale" content="${I18n.OG_LOCALES[l]}"`), l);
+    }
+  }
+});
+
+test('SEO: hreflang only for exposed locales + x-default, coherent with canonical', () => {
+  const hrefsFor = (html) => [...html.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"/g)].map((m) => [m[1], m[2]]);
+  const pairs = hrefsFor(seo.renderLocalizedIndex('it', 'https://example.test/'));
+  assert.deepStrictEqual(pairs.map((p) => p[0]), ['it', 'x-default']);
+  assert.strictEqual(Object.fromEntries(pairs)['x-default'], 'https://example.test/it/');
+  assert.strictEqual(Object.fromEntries(pairs).it, 'https://example.test/it/');
+  // nessun hreflang verso locale non esposte
+  for (const l of ['en', 'fr', 'de', 'es', 'pt']) {
+    assert.ok(!seo.buildAlternates('https://example.test').some((a) => a.hreflang === l), l);
   }
 });
 
 test('SEO: no meta keywords, no overclaiming, attribute escaping', () => {
-  const html = seo.renderLocalizedIndex('en', 'https://example.test"><script>x</script>');
+  const html = seo.renderLocalizedIndex('it', 'https://example.test"><script>x</script>');
   assert.ok(!/name="keywords"/i.test(html));
   assert.ok(!html.includes('"><script>x</script>'));
   const all = JSON.stringify(I18n.DICTIONARIES) + fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8');
