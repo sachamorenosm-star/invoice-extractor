@@ -6,6 +6,7 @@ const { extractInvoiceData } = require('../services/claudeService');
 const { applyIndependentVerification } = require('../utils/mathVerifier');
 const { getPlanStatus, recordScans, releaseTestDailyQuota } = require('../services/stripeService');
 const { countTotalPages } = require('../utils/pageCounter');
+const { resolveRequestCountry } = require('../utils/countries');
 
 const router = express.Router();
 
@@ -41,6 +42,19 @@ const extractLimiter = rateLimit({
   message: { error: 'Troppe richieste di estrazione. Attendi un minuto prima di caricare altri file.' },
 });
 
+// Paese del documento (campo multipart opzionale "country_code"). Assente =>
+// IT (compatibilità con i client esistenti). Validato PRIMA di
+// enforceScanLimit, così una richiesta rifiutata non consuma quota. Non
+// dipende dalla lingua UI né dalla valuta e non viene dedotto dall'IP.
+function resolveCountry(req, res, next) {
+  const resolved = resolveRequestCountry(req.body && req.body.country_code);
+  if (!resolved.ok) {
+    return res.status(resolved.status).json({ error: resolved.error, code: resolved.code });
+  }
+  req.documentCountry = resolved.countryCode;
+  next();
+}
+
 // Conta le pagine REALI dei file caricati (un PDF multipagina vale N
 // pagine, un'immagine vale sempre 1) PRIMA di chiamare l'API Claude, così
 // il limite di piano viene applicato sul consumo effettivo e una richiesta
@@ -62,6 +76,7 @@ router.post(
   requireAuthIfTestMode,
   extractLimiter,
   upload.array('invoices'),
+  resolveCountry,
   enforceScanLimit(countRequestPages),
   async (req, res, next) => {
     const isTestMode = process.env.TEST_MODE === 'true';
@@ -92,7 +107,7 @@ router.post(
         req.files.map(async (file, index) => {
           try {
             if (req.pageErrorsPerFile[index]) throw req.pageErrorsPerFile[index];
-            const extraction = await extractInvoiceData(file.buffer, file.mimetype, file.originalname);
+            const extraction = await extractInvoiceData(file.buffer, file.mimetype, file.originalname, { countryCode: req.documentCountry });
             return {
               filename: file.originalname,
               pages: pageCounts[index],

@@ -22,6 +22,9 @@ const waitlistRoutes = require('./routes/waitlist');
 const feedbackRoutes = require('./routes/feedback');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { getTestDailyLimit } = require('./services/stripeService');
+const { listCountries, DEFAULT_COUNTRY_CODE } = require('./utils/countries');
+const { renderLocalizedIndex } = require('./utils/seo');
+const I18n = require('../public/i18n');
 
 const app = express();
 const { requestId, extractionLifecycle } = require('./middleware/requestId');
@@ -113,6 +116,23 @@ app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
 // ---------------------------------------------------------------------
+// Pagine localizzate (/it/, /en/, /fr/, /de/, /es/, /pt/) con SEO
+// internazionale (canonical + hreflang + x-default). "/" serve la lingua di
+// default e ha come canonical la propria versione /it/, quindi non è un
+// duplicato non segnalato. Registrate PRIMA di express.static, che
+// altrimenti servirebbe public/index.html grezzo su "/".
+// ---------------------------------------------------------------------
+function sendLocalizedIndex(locale, req, res) {
+  res.type('html').send(renderLocalizedIndex(locale, FRONTEND_URL));
+}
+app.get('/', (req, res) => sendLocalizedIndex(I18n.DEFAULT_LOCALE, req, res));
+app.get('/:locale', (req, res, next) => {
+  const locale = I18n.isSupportedLocale(req.params.locale) ? req.params.locale.toLowerCase() : null;
+  if (!locale || req.params.locale !== locale) return next();
+  sendLocalizedIndex(locale, req, res);
+});
+
+// ---------------------------------------------------------------------
 // File statici (frontend)
 // ---------------------------------------------------------------------
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -133,6 +153,12 @@ app.get('/api/config', (req, res) => {
     // TEST_MODE beta configuration
     testMode,
     testDailyLimit: testMode ? getTestDailyLimit() : null,
+    // i18n / multi-country: lingua UI, paese del documento e valuta sono
+    // indipendenti. defaultCurrency per paese è solo un'aspettativa.
+    countries: listCountries(),
+    defaultCountryCode: DEFAULT_COUNTRY_CODE,
+    locales: I18n.SUPPORTED_LOCALES,
+    defaultLocale: I18n.DEFAULT_LOCALE,
   });
 });
 
